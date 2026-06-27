@@ -3,6 +3,9 @@
 #include <SDL3/SDL_main.h>
 #include "include/assets.h"
 
+#define ARENA_IMPLEMENTATION
+#include "include/arena.h"
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 
