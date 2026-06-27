@@ -1,28 +1,21 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 4.2.1)
 project(drawingapp C)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-set(SDL_SHARED OFF CACHE BOOL "Disable shared library" FORCE)
-set(SDL_STATIC ON CACHE BOOL "Enable static library" FORCE)
-set(SDL_TESTS OFF CACHE BOOL "Disable SDL testing suites" FORCE)
+set(BUILD_SHARED_LIBS OFF)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+
+set(SDL3IMAGE_VENDORED ON)
 
 add_subdirectory(vendored/SDL)
-
-# e.g. add SDL_Image
-# set(SDL_IMAGE_VENDORED ON CACHE BOOL "" FORCE)
-# add_subdirectory(vendored/SDL_image)
+add_subdirectory(vendored/SDL_image)
 
 
-set(SOURCES
-    main.c
-    # files go here
-)
-
-
-# embed images into code
 function(embed_asset ASSET_PATH VARIABLE_NAME OUTPUT_LIST)
     get_filename_component(ASSET_ABS ${ASSET_PATH} ABSOLUTE)
     get_filename_component(ASSET_NAME ${ASSET_PATH} NAME_WLE)
@@ -45,18 +38,19 @@ function(embed_asset ASSET_PATH VARIABLE_NAME OUTPUT_LIST)
 endfunction()
 
 set(EMBEDDED_ASSET_SOURCES "")
-# e.g. embed_asset("assets/hello.png" "hello" EMBEDDED_ASSET_SOURCES)
+embed_asset("please.png" "asset_please" EMBEDDED_ASSET_SOURCES)
 
 
-add_executable(drawingapp ${SOURCES} ${EMBEDDED_ASSET_SOURCES})
+add_executable(drawingapp 
+    main.c 
+    ${EMBEDDED_ASSET_SOURCES}
+)
 
-target_include_directories(drawingapp PRIVATE include)
+target_sources(drawingapp PRIVATE "assets.c")
 
-target_link_libraries(drawingapp PRIVATE SDL3::SDL3)
+target_include_directories(drawingapp PRIVATE "include")
 
-# e.g. add SDL_Image
-# target_link_libraries(drawingapp PRIVATE SDL3_image::SDL3_image-static)
-
+target_link_libraries(drawingapp PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)
 
 if(EMSCRIPTEN)
     target_compile_options(drawingapp PRIVATE -O3)
@@ -64,6 +58,17 @@ if(EMSCRIPTEN)
     
     set_target_properties(drawingapp PROPERTIES SUFFIX ".html")
 else()
-    target_compile_options(drawingapp PRIVATE -O3 -march=native)
-    target_link_options(drawingapp PRIVATE -O3)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    
+    target_compile_options(drawingapp PRIVATE 
+        -O3 
+        -march=native 
+        -ffunction-sections 
+        -fdata-sections
+    )
+    
+    target_link_options(drawingapp PRIVATE 
+        -flto 
+        -Wl,--gc-sections
+    )
 endif()
