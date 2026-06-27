@@ -1,0 +1,7 @@
+normal
+cmake -S . -B build
+cmake --build build
+
+WASM
+cmake -S . -B build-web -DCMAKE_TOOLCHAIN_FILE=/path/to/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake
+cmake --build build-web

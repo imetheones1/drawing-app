@@ -1,3 +1,6 @@
+vendored/*
+build/*
+
 # Prerequisites
 *.d
 
