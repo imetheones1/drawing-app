@@ -1,30 +1,12 @@
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include "include/appstate.h"
 #include "include/assets.h"
 #include "include/canvas.h"
 
 #define ARENA_IMPLEMENTATION
 #include "include/arena.h"
-
-typedef struct Assets {
-    // SDL_Texture *test_texture;
-} Assets;
-
-typedef struct AppState {
-    SDL_Window *window;
-    SDL_Renderer *renderer;
-    Assets *assets;
-    Layers *layers;
-
-    double canvas_zoom;
-    double canvas_x, canvas_y; // transform from center
-    double canvas_rotation;
-
-    bool mouse1; // true if mouse1 is held
-    bool mouse2; // true if mouse2 is held
-    bool mouse3; // true if mouse3 is held
-} AppState;
 
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
@@ -50,6 +32,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     fillLayer(&(state->layers->layers[0]),makeColor(255,255,255,255));
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     fillLayer(&(state->layers->layers[1]),makeColor(0,0,0,0));
+    state->cur_layer = 1;
+
+    state->cur_lines = SDL_malloc(sizeof(Lines));
+    state->cur_lines->point_capacity = 10;
+    state->cur_lines->points = SDL_calloc(state->cur_lines->point_capacity,sizeof(SDL_FPoint));
+    state->cur_lines->point_count = 0;
+    state->cur_lines->is_drawing = false;
 
     state->canvas_zoom = 0;
     state->canvas_x = 0;
@@ -67,7 +56,24 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
             switch (event->button.button) {
-                case SDL_BUTTON_LEFT: {state->mouse1=true;break;}
+                case SDL_BUTTON_LEFT: {
+                    state->mouse1=true;
+                    double canvas_x = 0;
+                    double canvas_y = 0;
+                    screenToCanvas(state,event->button.x,event->button.y,&canvas_x,&canvas_y);
+                    if (canvas_x < 0 || canvas_x >= state->layers->width || canvas_y < 0 || canvas_y >= state->layers->height) break;
+                    // SDL_Log("clicked canvas: %f, %f",canvas_x,canvas_y);
+                    state->cur_lines->is_drawing = true;
+
+                    // todo make it draw if theres points
+
+                    state->cur_lines->point_count = 1;
+                    state->cur_lines->points[0] = (SDL_FPoint){
+                        .x = canvas_x,
+                        .y = canvas_y
+                    };
+                    break;
+                }
                 case SDL_BUTTON_RIGHT: {state->mouse2=true;break;}
                 case SDL_BUTTON_MIDDLE: {state->mouse3=true;break;}
             }
@@ -80,13 +86,41 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                 state->canvas_y += event->motion.yrel;
             }
             else if (state->mouse2){
+                // rotate
+                // todo make this a keybind
                 state->canvas_rotation -= event->motion.xrel*0.1;
+            }
+            else if (state->mouse1) {
+                double canvas_x = 0;
+                double canvas_y = 0;
+                screenToCanvas(state,event->motion.x,event->motion.y,&canvas_x,&canvas_y);
+
+                if (state->cur_lines->point_count>=state->cur_lines->point_capacity) break;
+                state->cur_lines->points[state->cur_lines->point_count++] = (SDL_FPoint){
+                    .x = canvas_x,
+                    .y = canvas_y
+                };
             }
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP: {
             switch (event->button.button) {
-                case SDL_BUTTON_LEFT: {state->mouse1=false;break;}
+                case SDL_BUTTON_LEFT: {
+                    state->mouse1=false;
+                    if (!state->cur_lines->is_drawing) break;
+
+                    double canvas_x = 0;
+                    double canvas_y = 0;
+                    screenToCanvas(state,event->button.x,event->button.y,&canvas_x,&canvas_y);
+
+                    if (state->cur_lines->point_count>=state->cur_lines->point_capacity) break;
+                    state->cur_lines->points[state->cur_lines->point_count++] = (SDL_FPoint){
+                        .x = canvas_x,
+                        .y = canvas_y
+                    };
+
+                    state->cur_lines->is_drawing = false;
+                }
                 case SDL_BUTTON_RIGHT: {state->mouse2=false;break;}
                 case SDL_BUTTON_MIDDLE: {state->mouse3=false;break;}
             }
@@ -102,8 +136,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
-    int w = 0, h = 0;
-    SDL_GetCurrentRenderOutputSize(state->renderer, &w, &h);
+
+    // todo move this to events
+    SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
+
+    drawLinesToLayer(state->cur_lines,&(state->layers->layers[state->cur_layer]));
 
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);
@@ -115,8 +152,8 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         .w = state->layers->width * zoom_factor,
         .h = state->layers->height * zoom_factor,
     };
-    canvas_dest.x = state->canvas_x + w/2 - canvas_dest.w/2;
-    canvas_dest.y = state->canvas_y + h/2 - canvas_dest.h/2;
+    canvas_dest.x = state->canvas_x + state->screen_width/2 - canvas_dest.w/2;
+    canvas_dest.y = state->canvas_y + state->screen_height/2 - canvas_dest.h/2;
     SDL_RenderTextureRotated(state->renderer, state->layers->canvas_buffer,NULL,&canvas_dest,state->canvas_rotation,NULL,SDL_FLIP_NONE);
 
     SDL_RenderPresent(state->renderer);

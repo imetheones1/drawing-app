@@ -1,6 +1,9 @@
 #ifndef CANVAS_H_
 #define CANVAS_H_
 #include <SDL3/SDL.h>
+#include "appstate.h"
+typedef struct AppState AppState;
+typedef struct Lines Lines;
 
 typedef struct Layer {
     uint32_t* pixels; // RGBA888
@@ -29,8 +32,12 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
 
 // drawing functions
 
+void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y);
+
 #define makeColor(r,g,b,a) ((uint32_t)( ( (uint32_t)(r) << 24 ) | ( (uint32_t)(g) << 16 ) | ( (uint32_t)(b) << 8 ) | (uint32_t)(a) ))
 
 void fillLayer(Layer *layer, uint32_t color);
+
+void drawLinesToLayer(Lines *lines, Layer *layer);
 
 #endif
