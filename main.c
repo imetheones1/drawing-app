@@ -130,7 +130,31 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL: {
-            state->canvas_zoom += event->wheel.y*0.1;
+            float mx = event->wheel.mouse_x;
+            float my = event->wheel.mouse_y;
+
+            double cx, cy;
+            screenToCanvas(state, mx, my, &cx, &cy);
+
+            state->canvas_zoom += event->wheel.y * 0.1;
+
+            double scale = SDL_pow(2, state->canvas_zoom);
+            double rad = state->canvas_rotation * (SDL_PI_F / 180.0);
+            double cos_theta = SDL_cos(rad);
+            double sin_theta = SDL_sin(rad);
+
+            double sx = cx - (state->layers->width / 2.0);
+            double sy = cy - (state->layers->height / 2.0);
+
+            double rx = sx * scale;
+            double ry = sy * scale;
+
+            double dx = (rx * cos_theta) - (ry * sin_theta);
+            double dy = (rx * sin_theta) + (ry * cos_theta);
+
+            state->canvas_x = mx - dx - (state->screen_width / 2.0);
+            state->canvas_y = my - dy - (state->screen_height / 2.0);
+
             break;
         }
     }
