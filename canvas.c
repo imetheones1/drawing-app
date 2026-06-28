@@ -5,6 +5,7 @@
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers){
     if (!layers->canvas_buffer) {
         layers->canvas_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        SDL_SetTextureScaleMode(layers->canvas_buffer,SDL_SCALEMODE_NEAREST);
     }
     SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
     SDL_SetRenderTarget(renderer, layers->canvas_buffer);
