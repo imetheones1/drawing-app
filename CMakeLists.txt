@@ -47,6 +47,7 @@ add_executable(drawingapp
 )
 
 target_sources(drawingapp PRIVATE "assets.c")
+target_sources(drawingapp PRIVATE "canvas.c")
 
 target_include_directories(drawingapp PRIVATE "include")
 

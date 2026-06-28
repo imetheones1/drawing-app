@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include "include/assets.h"
+#include "include/canvas.h"
 
 #define ARENA_IMPLEMENTATION
 #include "include/arena.h"
@@ -14,7 +15,7 @@ typedef struct AppState {
     SDL_Window *window;
     SDL_Renderer *renderer;
     Assets *assets;
-    
+    Layers *layers;
 } AppState;
 
 
@@ -25,12 +26,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+    SDL_SetRenderDrawBlendMode(state->renderer,SDL_BLENDMODE_BLEND);
 
     state->assets = SDL_malloc(sizeof(Assets));
 
     SDL_Surface *test_surface = loadAsset(asset_please,asset_please_len);
     state->assets->test_texture = SDL_CreateTextureFromSurface(state->renderer,test_surface);
     SDL_DestroySurface(test_surface);
+
+    state->layers = SDL_calloc(1,sizeof(Layers));
+    state->layers->layer_count = 0;
+    state->layers->width = 400;
+    state->layers->height = 400;
+    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
 
     *appstate = state;
     return SDL_APP_CONTINUE;
@@ -53,6 +61,9 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     SDL_RenderClear(state->renderer);
 
     SDL_RenderTexture(state->renderer, state->assets->test_texture, NULL, NULL);
+
+    compositeLayers(state->renderer,state->layers);
+    SDL_RenderTexture(state->renderer, state->layers->canvas_buffer, NULL, NULL);
 
     SDL_RenderPresent(state->renderer);
 
