@@ -26,9 +26,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
 
     state->layers = SDL_calloc(1,sizeof(Layers));
     state->layers->layer_count = 0;
-    state->layers->width = 400;
-    state->layers->height = 400;
-    state->layers->edit_layer = createLayer(400, 400,&SDL_calloc);
+    state->layers->width = 1000;
+    state->layers->height = 1000;
+    state->layers->edit_layer = createLayer(state->layers->width, state->layers->height, &SDL_calloc);
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     fillLayer(&(state->layers->layers[0]),makeColor(255,255,255,255));
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);

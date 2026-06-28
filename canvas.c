@@ -128,6 +128,46 @@ void fillLayer(Layer *layer, uint32_t color) {
 
 // drawing
 
+void drawHorizontalLine(Layer *layer, int x1, int x2, int y, uint32_t color){
+    if (y<0||y>=layer->height) return;
+    for (int x = x1; x <= x2; x++){
+        if (x<0) continue;
+        if (x>=layer->width) break;
+        layer->pixels[y * layer->width + x] = color;
+    }
+}
+
+void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
+    const int d = r * 2;
+
+    int x = r-1;
+    int y = 0;
+    int tx = 1;
+    int ty = 1;
+    int error = tx - d;
+
+    while (x >= y) {
+        // SDL_RenderLine(renderer,cx-y,cy+x,cx+y,cy+x);
+        drawHorizontalLine(layer,cx-y,cx+y,cy+x,color);
+        // SDL_RenderLine(renderer,cx-x,cy+y,cx+x,cy+y);
+        drawHorizontalLine(layer,cx-x,cx+x,cy+y,color);
+        // SDL_RenderLine(renderer,cx-x,cy-y,cx+x,cy-y);
+        drawHorizontalLine(layer,cx-x,cx+x,cy-y,color);
+        // SDL_RenderLine(renderer,cx-y,cy-x,cx+y,cy-x);
+        drawHorizontalLine(layer,cx-y,cx+y,cy-x,color);
+        if (error <= 0) {
+            ++y;
+            error += ty;
+            ty += 2;
+        }
+        if (error > 0) {
+            --x;
+            tx += 2;
+            error += (tx - d);
+        }
+    }
+}
+
 static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color) {
     int x0 = (int)SDL_roundf(p1.x);
     int y0 = (int)SDL_roundf(p1.y);
@@ -146,7 +186,8 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
             
             // brush logic here
 
-            layer->pixels[y0 * layer->width + x0] = color;
+            // layer->pixels[y0 * layer->width + x0] = color;
+            drawFilledCircle(layer,x0,y0,2,color);
         }
 
         if (x0 == x1 && y0 == y1) break;
