@@ -12,7 +12,7 @@
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     AppState *state = SDL_calloc(1,sizeof(AppState));
 
-    if (!SDL_CreateWindowAndRenderer("Hello World", 800, 600, SDL_WINDOW_RESIZABLE, &(state->window), &(state->renderer))) {
+    if (!SDL_CreateWindowAndRenderer("drawing app", 800, 600, SDL_WINDOW_RESIZABLE, &(state->window), &(state->renderer))) {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -28,11 +28,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->layers->layer_count = 0;
     state->layers->width = 400;
     state->layers->height = 400;
+    state->layers->edit_layer = createLayer(400, 400,&SDL_calloc);
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     fillLayer(&(state->layers->layers[0]),makeColor(255,255,255,255));
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     fillLayer(&(state->layers->layers[1]),makeColor(0,0,0,0));
-    state->cur_layer = 1;
+    state->layers->cur_layer = 1;
 
     state->cur_lines = SDL_malloc(sizeof(Lines));
     state->cur_lines->point_capacity = 10;
@@ -120,6 +121,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                     };
 
                     state->cur_lines->is_drawing = false;
+
+                    state->is_edit_finish = true;
                 }
                 case SDL_BUTTON_RIGHT: {state->mouse2=false;break;}
                 case SDL_BUTTON_MIDDLE: {state->mouse3=false;break;}
@@ -140,7 +143,14 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     // todo move this to events
     SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
 
-    drawLinesToLayer(state->cur_lines,&(state->layers->layers[state->cur_layer]));
+    drawLinesToLayer(state->cur_lines,&(state->layers->edit_layer));
+
+    if (state->is_edit_finish) {
+        state->is_edit_finish = false;
+        mergeLayers(&(state->layers->layers[state->layers->cur_layer]),&(state->layers->edit_layer));
+        fillLayer(&(state->layers->edit_layer),0);
+        state->layers->edit_layer.is_changed = true;
+    }
 
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);

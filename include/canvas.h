@@ -6,7 +6,7 @@ typedef struct AppState AppState;
 typedef struct Lines Lines;
 
 typedef struct Layer {
-    uint32_t* pixels; // RGBA888
+    uint32_t* pixels; // RGBA8888
     SDL_Texture* texture;
     size_t width, height;
     bool is_changed; // True when pixels is updated and texture needs to be
@@ -15,6 +15,8 @@ typedef struct Layer {
 typedef struct Layers {
     Layer* layers;
     size_t layer_count;
+    size_t cur_layer;
+    Layer edit_layer;
     size_t width, height; // width & height in pixels
     SDL_Texture* canvas_buffer; // Combined buffer
 } Layers;
@@ -28,14 +30,20 @@ typedef struct Layers {
  */
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers);
 
+Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb, size_t size));
+
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
+
+void mergeLayers(Layer* restrict dest, const Layer* restrict src);
 
 // drawing functions
 
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y);
 
+// generate a color from 4 uint8_t
 #define makeColor(r,g,b,a) ((uint32_t)( ( (uint32_t)(r) << 24 ) | ( (uint32_t)(g) << 16 ) | ( (uint32_t)(b) << 8 ) | (uint32_t)(a) ))
 
+// fill a layer completely with a solid color
 void fillLayer(Layer *layer, uint32_t color);
 
 void drawLinesToLayer(Lines *lines, Layer *layer);

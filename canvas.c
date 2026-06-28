@@ -2,6 +2,19 @@
 #include "include/appstate.h"
 #include "include/canvas.h"
 
+static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
+    if (!cur_layer->texture) {
+        cur_layer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, cur_layer->width, cur_layer->height);
+        SDL_SetTextureBlendMode(cur_layer->texture, SDL_BLENDMODE_BLEND);
+        cur_layer->is_changed = true;
+    }
+    if (cur_layer->is_changed) {
+        SDL_UpdateTexture(cur_layer->texture, NULL, cur_layer->pixels, cur_layer->width * sizeof(uint32_t));
+        cur_layer->is_changed = false;
+    }
+    SDL_RenderTexture(renderer, cur_layer->texture, NULL, NULL);
+}
+
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers){
     if (!layers->canvas_buffer) {
         layers->canvas_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
@@ -12,31 +25,76 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers){
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
     for (size_t index = 0; index < layers->layer_count; index++){
-        Layer* cur_layer = &(layers->layers[index]);
-        if (!cur_layer->texture) {
-            cur_layer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, layers->width, layers->height);
-            SDL_SetTextureBlendMode(cur_layer->texture, SDL_BLENDMODE_BLEND);
-            cur_layer->is_changed = true;
+        // Layer* cur_layer = &(layers->layers[index]);
+        drawLayerToRenderer(renderer,&(layers->layers[index]));
+        if (index==layers->cur_layer) {
+            drawLayerToRenderer(renderer,&(layers->edit_layer));
         }
-        if (cur_layer->is_changed) {
-            SDL_UpdateTexture(cur_layer->texture, NULL, cur_layer->pixels, layers->width * sizeof(uint32_t));
-            cur_layer->is_changed = false;
-        }
-        SDL_RenderTexture(renderer, cur_layer->texture, NULL, NULL);
     }
     SDL_SetRenderTarget(renderer, prev_target);
     return layers->canvas_buffer;
 }
 
+Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb, size_t size)) {
+    return (Layer){
+        .height = height,
+        .width = width,
+        .pixels = (uint32_t*)(calloc_func(height * width, sizeof(uint32_t))),
+        .texture = NULL,
+        .is_changed = true
+    };
+}
+
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size)) {
     layers->layer_count++;
     layers->layers = (Layer*)(realloc_func(layers->layers, layers->layer_count * sizeof(Layer)));
-    Layer* new_layer = &(layers->layers[layers->layer_count - 1]);
-    new_layer->height = layers->height;
-    new_layer->width = layers->width;
-    new_layer->pixels = (uint32_t*)(calloc_func(layers->height * layers->width, sizeof(uint32_t)));
-    new_layer->texture = NULL; 
-    new_layer->is_changed = true;
+    layers->layers[layers->layer_count - 1] = createLayer(layers->height,layers->width,calloc_func);
+}
+
+void mergeLayers(Layer* restrict dest, const Layer* restrict src) {
+    if (dest->width != src->width || dest->height != src->height) {
+        return; 
+    }
+
+    size_t total_pixels = dest->width * dest->height;
+    uint32_t* restrict d_px = dest->pixels;
+    const uint32_t* restrict s_px = src->pixels;
+
+    for (size_t i = 0; i < total_pixels; ++i) {
+        uint32_t sp = s_px[i];
+        uint32_t sa = sp & 0xFF;
+
+        if (sa == 0) {
+            continue;
+        }
+        if (sa == 255) {
+            d_px[i] = sp;
+            continue;
+        }
+
+        uint32_t dp = d_px[i];
+        uint32_t da = dp & 0xFF;
+        
+        uint32_t sr = (sp >> 24) & 0xFF;
+        uint32_t sg = (sp >> 16) & 0xFF;
+        uint32_t sb = (sp >> 8) & 0xFF;
+
+        uint32_t dr = (dp >> 24) & 0xFF;
+        uint32_t dg = (dp >> 16) & 0xFF;
+        uint32_t db = (dp >> 8) & 0xFF;
+
+        uint32_t inv_sa = 255 - sa;
+
+        uint8_t out_r = (sr * sa + dr * inv_sa) / 255;
+        uint8_t out_g = (sg * sa + dg * inv_sa) / 255;
+        uint8_t out_b = (sb * sa + db * inv_sa) / 255;
+        
+        uint8_t out_a = sa + (da * inv_sa) / 255;
+
+        d_px[i] = makeColor(out_r,out_g,out_b,out_a);
+    }
+
+    dest->is_changed = true;
 }
 
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y) {

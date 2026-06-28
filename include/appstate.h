@@ -19,7 +19,6 @@ typedef struct AppState {
     SDL_Renderer *renderer;
     Assets *assets;
     Layers *layers;
-    size_t cur_layer;
 
     int screen_width, screen_height; // screen size in pixels
 
@@ -32,6 +31,7 @@ typedef struct AppState {
     bool mouse3; // true if mouse3 is held
 
     Lines *cur_lines;
+    bool is_edit_finish;
 } AppState;
 
 #endif
