@@ -36,3 +36,9 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
     new_layer->texture = NULL; 
     new_layer->is_changed = true;
 }
+
+void fillLayer(Layer *layer, uint32_t color) {
+    for (size_t index = 0; index < layer->width*layer->height; index++){
+        layer->pixels[index] = color;
+    }
+}

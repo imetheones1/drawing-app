@@ -27,4 +27,10 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers);
 
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
 
+// drawing functions
+
+#define makeColor(r,g,b,a) ((uint32_t)( ( (uint32_t)(r) << 24 ) | ( (uint32_t)(g) << 16 ) | ( (uint32_t)(b) << 8 ) | (uint32_t)(a) ))
+
+void fillLayer(Layer *layer, uint32_t color);
+
 #endif
