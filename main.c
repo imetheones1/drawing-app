@@ -6,13 +6,17 @@
 #define ARENA_IMPLEMENTATION
 #include "include/arena.h"
 
+typedef struct Assets {
+    SDL_Texture *test_texture;
+} Assets;
+
 typedef struct AppState {
     SDL_Window *window;
     SDL_Renderer *renderer;
-    size_t debug;
+    Assets *assets;
+    
 } AppState;
 
-static SDL_Texture *test_texture = NULL;
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     AppState *state = SDL_malloc(sizeof(AppState));
@@ -21,11 +25,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    SDL_Surface *test_surface = loadAsset(asset_please,asset_please_len);
-    test_texture = SDL_CreateTextureFromSurface(state->renderer,test_surface);
-    SDL_DestroySurface(test_surface);
 
-    state->debug = 0;
+    state->assets = SDL_malloc(sizeof(Assets));
+
+    SDL_Surface *test_surface = loadAsset(asset_please,asset_please_len);
+    state->assets->test_texture = SDL_CreateTextureFromSurface(state->renderer,test_surface);
+    SDL_DestroySurface(test_surface);
 
     *appstate = state;
     return SDL_APP_CONTINUE;
@@ -44,21 +49,12 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     int w = 0, h = 0;
     SDL_GetCurrentRenderOutputSize(state->renderer, &w, &h);
 
-    float x, y;
-
-    x = (w/2);
-    y = ((h) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
-
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);
 
-    SDL_RenderTexture(state->renderer, test_texture, NULL, NULL);
-    SDL_RenderDebugTextFormat(state->renderer, x, y, "%zu",state->debug);
-
+    SDL_RenderTexture(state->renderer, state->assets->test_texture, NULL, NULL);
 
     SDL_RenderPresent(state->renderer);
-
-    state->debug++;
 
     return SDL_APP_CONTINUE;
 }
