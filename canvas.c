@@ -147,13 +147,9 @@ void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
     int error = tx - d;
 
     while (x >= y) {
-        // SDL_RenderLine(renderer,cx-y,cy+x,cx+y,cy+x);
         drawHorizontalLine(layer,cx-y,cx+y,cy+x,color);
-        // SDL_RenderLine(renderer,cx-x,cy+y,cx+x,cy+y);
         drawHorizontalLine(layer,cx-x,cx+x,cy+y,color);
-        // SDL_RenderLine(renderer,cx-x,cy-y,cx+x,cy-y);
         drawHorizontalLine(layer,cx-x,cx+x,cy-y,color);
-        // SDL_RenderLine(renderer,cx-y,cy-x,cx+y,cy-x);
         drawHorizontalLine(layer,cx-y,cx+y,cy-x,color);
         if (error <= 0) {
             ++y;

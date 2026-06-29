@@ -30,14 +30,18 @@ typedef struct Layers {
  */
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers);
 
+// create a default layer of the given size
 Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb, size_t size));
 
+// append a new layer to a layers struct
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
 
+// apply all information from src to dest
 void mergeLayers(Layer* restrict dest, const Layer* restrict src);
 
 // drawing functions
 
+// convert from screen space to canvas space
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y);
 
 // generate a color from 4 uint8_t
@@ -46,6 +50,7 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 // fill a layer completely with a solid color
 void fillLayer(Layer *layer, uint32_t color);
 
+// apply all lines from a lines object to a given layer
 void drawLinesToLayer(Lines *lines, Layer *layer);
 
 #endif

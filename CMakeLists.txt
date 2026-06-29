@@ -11,9 +11,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 
 set(SDL3IMAGE_VENDORED ON)
+set(SDLTTF_VENDORED ON)
 
 add_subdirectory(vendored/SDL)
 add_subdirectory(vendored/SDL_image)
+add_subdirectory(vendored/SDL_ttf)
 
 
 function(embed_asset ASSET_PATH VARIABLE_NAME OUTPUT_LIST)
@@ -51,7 +53,7 @@ target_sources(drawingapp PRIVATE "canvas.c")
 
 target_include_directories(drawingapp PRIVATE "include")
 
-target_link_libraries(drawingapp PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)
+target_link_libraries(drawingapp PRIVATE SDL3::SDL3 SDL3_image::SDL3_image SDL3_ttf::SDL3_ttf)
 
 if(EMSCRIPTEN)
     target_compile_options(drawingapp PRIVATE -O3)
