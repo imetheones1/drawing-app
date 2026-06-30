@@ -240,7 +240,7 @@ void fillLayer(Layer *layer, uint32_t color) {
     layer->is_changed = true;
 }
 
-void drawHorizontalLine(Layer *layer, int x1, int x2, int y, uint32_t color){
+static void drawHorizontalLine(Layer *layer, int x1, int x2, int y, uint32_t color){
     if (y < 0 || y >= layer->height) return;
     
     expandDirtyRect(layer, x1, y);
@@ -253,7 +253,7 @@ void drawHorizontalLine(Layer *layer, int x1, int x2, int y, uint32_t color){
     }
 }
 
-void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
+static void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
     expandDirtyRect(layer, cx - r, cy - r);
     expandDirtyRect(layer, cx + r, cy + r);
 
@@ -282,7 +282,7 @@ void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
     }
 }
 
-static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color) {
+static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, int radius) {
     int x0 = (int)SDL_roundf(p1.x);
     int y0 = (int)SDL_roundf(p1.y);
     int x1 = (int)SDL_roundf(p2.x);
@@ -301,7 +301,7 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
             // brush logic here
 
             // layer->pixels[y0 * layer->width + x0] = color;
-            drawFilledCircle(layer,x0,y0,2,color);
+            drawFilledCircle(layer,x0,y0,radius,color);
         }
 
         if (x0 == x1 && y0 == y1) break;
@@ -318,14 +318,14 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
     }
 }
 
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color) {
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, int radius) {
     if (!lines || !layer || !layer->pixels) return false;
 
     if (lines->point_count < 2) return false;
 
 
     for (size_t i = 0; i < lines->point_count - 1; i++) {
-        drawLineSegment(layer, lines->points[i], lines->points[i + 1], color);
+        drawLineSegment(layer, lines->points[i], lines->points[i + 1], color, radius);
     }
 
     layer->is_changed = true;

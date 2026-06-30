@@ -266,15 +266,17 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     switch (state->layers->current_tool) {
         case TOOL_BRUSH: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
+            state->layers->current_tool_radius = 2;
             break;
         }
         case TOOL_ERASER: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
+            state->layers->current_tool_radius = 10;
             break;
         }
     }
 
-    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer),state->layers->current_color)) state->should_redraw = true;
+    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer),state->layers->current_color,state->layers->current_tool_radius)) state->should_redraw = true;
 
     if (state->is_edit_finish) {
         state->is_edit_finish = false;
