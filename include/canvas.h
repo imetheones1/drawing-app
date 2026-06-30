@@ -63,6 +63,8 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
 // apply all information from src to dest
 void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite, const bool is_eraser);
 
+#define isInsideRectangle(x,y,rx,ry,rw,rh) (x>=rx&&x<rx+rw&&y>=ry&&y<ry+rh)
+
 // drawing functions
 
 // convert from screen space to canvas space

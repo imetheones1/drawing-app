@@ -139,6 +139,58 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     return SDL_APP_CONTINUE;
 }
 
+#define MAX_TEXTBOX_LEN 256
+#define MAX_ACTIVE_TEXTBOXES 10
+
+typedef struct TextboxState {
+    char text[MAX_TEXTBOX_LEN];
+    size_t length;
+    bool is_focused;
+    Clay_ElementId id;
+} TextboxState;
+
+static TextboxState* active_textboxes[MAX_ACTIVE_TEXTBOXES];
+static size_t active_textboxes_count = 0;
+
+static Clay_TextElementConfig textbox_text_config = {
+    .fontId = 0,
+    .fontSize = 16,
+    .textColor = { 255, 255, 255, 255 }
+};
+
+void CLAY_TEXTBOX(TextboxState* tb, Clay_ElementId id) {
+    tb->id = id;
+    
+    if (active_textboxes_count < MAX_ACTIVE_TEXTBOXES) {
+        active_textboxes[active_textboxes_count++] = tb;
+    } else SDL_Log("too many textboxes active at once!");
+
+    CLAY((Clay_ElementDeclaration){
+        .id = id,
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_FIXED(60),
+                .height = CLAY_SIZING_FIXED(30)
+            },
+            .padding = {6, 6, 0, 0},
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = tb->is_focused ? (Clay_Color){60, 60, 65, 255} : (Clay_Color){30, 30, 35, 255},
+        .border = {
+            .color = tb->is_focused ? (Clay_Color){80, 120, 200, 255} : (Clay_Color){80, 80, 85, 255},
+            .width = {2, 2, 2, 2}
+        },
+        .cornerRadius = { 4, 4, 4, 4 }
+    }) {
+        Clay_String text_str = {
+            .chars = tb->text,
+            .length = tb->length,
+            .isStaticallyAllocated = false
+        };
+        CLAY_TEXT(text_str, &textbox_text_config);
+    }
+}
+
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
     AppState* state = (AppState*)appstate;
     switch (event->type) {
@@ -164,6 +216,25 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             switch (event->button.button) {
                 case SDL_BUTTON_LEFT: {
                     state->mouse1 = true;
+
+                    bool clicked_textbox = false;
+                    for (size_t i = 0; i < active_textboxes_count; i++) {
+                        TextboxState* tb = active_textboxes[i];
+                        Clay_ElementData elData = Clay_GetElementData(tb->id);
+                        
+                        if (elData.found && isInsideRectangle(event->button.x,event->button.y,elData.boundingBox.x,elData.boundingBox.y,elData.boundingBox.width,elData.boundingBox.height)) {
+                            tb->is_focused = true;
+                            clicked_textbox = true;
+                            SDL_StartTextInput(state->window);
+                            state->should_redraw = true;
+                        } else if (tb->is_focused) {
+                            tb->is_focused = false;
+                            state->should_redraw = true;
+                        }
+                    }
+                    if (!clicked_textbox) {
+                        SDL_StopTextInput(state->window);
+                    }
 
                     if (ui_intercepted) break;
 
@@ -303,6 +374,36 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             state->should_redraw = true;
             break;
         }
+        case SDL_EVENT_TEXT_INPUT: {
+            for (size_t i = 0; i < active_textboxes_count; i++) {
+                TextboxState* tb = active_textboxes[i];
+                if (tb->is_focused) {
+                    size_t add_len = SDL_strlen(event->text.text);
+                    if (tb->length + add_len < MAX_TEXTBOX_LEN - 1) {
+                        SDL_memcpy(tb->text + tb->length, event->text.text, add_len);
+                        tb->length += add_len;
+                        tb->text[tb->length] = '\0';
+                        state->should_redraw = true;
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+        case SDL_EVENT_KEY_DOWN: {
+            if (event->key.key == SDLK_BACKSPACE) {
+                for (size_t i = 0; i < active_textboxes_count; i++) {
+                    TextboxState* tb = active_textboxes[i];
+                    if (tb->is_focused && tb->length > 0) {
+                        tb->length--;
+                        tb->text[tb->length] = '\0';
+                        state->should_redraw = true;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
     }
     return SDL_APP_CONTINUE;
 }
@@ -325,18 +426,24 @@ static ButtonContext tool_button_context = {
     .type = BUTTON_TOOL
 };
 
+static TextboxState tool_radius_textbox = { 
+    .text = "2", 
+    .length = 1, 
+    .is_focused = false 
+};
+
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
     switch (state->layers->current_tool) {
         case TOOL_PEN: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
-            state->layers->current_tool_radius = 2;
+            state->layers->current_tool_radius = SDL_max(1, SDL_atoi(tool_radius_textbox.text));
             break;
         }
         case TOOL_ERASER: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
-            state->layers->current_tool_radius = 10;
+            state->layers->current_tool_radius = SDL_max(1, SDL_atoi(tool_radius_textbox.text));
             break;
         }
     }
@@ -373,13 +480,15 @@ SDL_AppResult SDL_AppIterate(void *appstate){
 
     char layers_text[25*state->layers->layer_count];
     
+    active_textboxes_count = 0;
+
     Clay_BeginLayout();
 
     float mx, my;
     SDL_GetMouseState(&mx, &my);
     
     double scale = SDL_pow(2, state->canvas_zoom);
-    float screen_radius = (float)(state->layers->current_tool_radius * scale);
+    float screen_radius = state->layers->current_tool_radius * scale;
 
     CLAY((Clay_ElementDeclaration){
         .id = CLAY_ID("BrushCursor"),
@@ -394,10 +503,9 @@ SDL_AppResult SDL_AppIterate(void *appstate){
             }
         },
         .border = { 
-            .color = {150, 150, 150, 255}, // Gray border visible on most colors
+            .color = {150, 150, 150, 255},
             .width = {.bottom = 2, .left = 2, .right = 2, .top = 2} 
         },
-        // Setting cornerRadius to width/2 (the radius) produces a perfect circle
         .cornerRadius = { screen_radius, screen_radius, screen_radius, screen_radius }
     }) {}
 
@@ -409,7 +517,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM,
                 .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM
             },
-            .offset = {-20, -20}, 
+            .offset = {-10, -10}, 
             .zIndex = CLAY_PANEL_Z_INDEX,
         },
         .layout = {
@@ -494,7 +602,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .element = CLAY_ATTACH_POINT_LEFT_TOP,
                 .parent = CLAY_ATTACH_POINT_LEFT_TOP
             },
-            .offset = {20, 20},
+            .offset = {10, 50},
             .zIndex = CLAY_PANEL_Z_INDEX,
         },
         .layout = {
@@ -538,6 +646,36 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 CLAY_TEXT(cur_tool_clay_string,&tool_button_text_config);
             }
         }
+    }
+
+    CLAY((Clay_ElementDeclaration){
+        .id = CLAY_ID("ToolSettingsPanel"),
+        .floating = {
+            .attachTo = CLAY_ATTACH_TO_ROOT,
+            .attachPoints = {
+                .element = CLAY_ATTACH_POINT_LEFT_TOP,
+                .parent = CLAY_ATTACH_POINT_LEFT_TOP
+            },
+            .offset = {0, 0},
+            .zIndex = CLAY_PANEL_Z_INDEX,
+        },
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_GROW(),
+                .height = CLAY_SIZING_FIXED(40),
+            },
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .padding = {10, 10, 10, 10},
+            .childGap = 10,
+            .childAlignment = { 
+                // .x = CLAY_ALIGN_X_CENTER,
+                .y = CLAY_ALIGN_Y_CENTER 
+            }
+        },
+        .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
+    }) {
+        CLAY_TEXT(CLAY_STRING("Radius:"), &tool_button_text_config); 
+        CLAY_TEXTBOX(&tool_radius_textbox, CLAY_ID("RadiusTextbox"));
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
