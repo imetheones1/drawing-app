@@ -96,7 +96,10 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
         layers->static_layers_changed = false;
     }
 
-    if (needs_cache_update||layers->edit_layer.is_changed||(layers->cur_layer < layers->layer_count&&layers->layers[layers->cur_layer].is_changed)){
+    bool active_layer_changed = (layers->cur_layer < layers->layer_count && layers->layers[layers->cur_layer].is_changed);
+    bool needs_active_update = needs_cache_update || layers->edit_layer.is_changed || active_layer_changed;
+
+    if (needs_active_update) {
         SDL_SetRenderTarget(renderer, layers->active_layer_buffer);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
@@ -122,14 +125,17 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
             SDL_SetTextureBlendMode(layers->edit_layer.texture, old_blend);
         }
     }
-    SDL_SetRenderTarget(renderer, layers->canvas_buffer);
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-    SDL_RenderClear(renderer);
+    if (needs_active_update) {
+        SDL_SetRenderTarget(renderer, layers->canvas_buffer);
 
-    SDL_RenderTexture(renderer, layers->below_buffer, NULL, NULL);
-    SDL_RenderTexture(renderer, layers->active_layer_buffer, NULL, NULL);
-    SDL_RenderTexture(renderer, layers->above_buffer, NULL, NULL);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+
+        SDL_RenderTexture(renderer, layers->below_buffer, NULL, NULL);
+        SDL_RenderTexture(renderer, layers->active_layer_buffer, NULL, NULL);
+        SDL_RenderTexture(renderer, layers->above_buffer, NULL, NULL);
+    }
 
     SDL_SetRenderTarget(renderer, prev_target);
 

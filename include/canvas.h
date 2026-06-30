@@ -8,7 +8,7 @@ typedef struct AppState AppState;
 typedef struct Lines Lines;
 
 typedef enum ToolType {
-    TOOL_BRUSH,
+    TOOL_PEN,
     TOOL_ERASER,
     TOOL_COUNT // do not use as a tool
 } ToolType;

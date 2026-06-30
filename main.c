@@ -9,6 +9,8 @@
 #define CLAY_IMPLEMENTATION
 #include "Clay/clay.h"
 
+#define CLAY_PANEL_Z_INDEX 20
+
 enum ButtonType {
     BUTTON_LAYER,
     BUTTON_TOOL
@@ -46,8 +48,6 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
         }
         else if (context->type == BUTTON_TOOL) {
             context->state->layers->current_tool = elementId.offset;
-            SDL_Log("Switched Tool To: %s", context->state->layers->current_tool == TOOL_BRUSH ? "BRUSH" : "ERASER");
-
         }
     }
 }
@@ -152,9 +152,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             bool ui_intercepted = false;
             Clay_ElementIdArray over_ids = Clay_GetPointerOverIds();
             uint32_t root_id = Clay_GetElementId(CLAY_STRING("Clay__RootContainer")).id;
+            uint32_t brush_id = Clay_GetElementId(CLAY_STRING("BrushCursor")).id;
             
             for (int i = 0; i < over_ids.length; i++) {
-                if (over_ids.internalArray[i].id != root_id) {
+                if (over_ids.internalArray[i].id != root_id && over_ids.internalArray[i].id != brush_id) {
                     ui_intercepted = true;
                     break;
                 }
@@ -190,6 +191,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
         }
         case SDL_EVENT_MOUSE_MOTION: {
             Clay_SetPointerState((Clay_Vector2){ event->motion.x, event->motion.y }, state->mouse1);
+
+            state->should_redraw = true;
 
             if (state->mouse3) {
                 // drag
@@ -251,8 +254,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             bool ui_intercepted = false;
             Clay_ElementIdArray over_ids = Clay_GetPointerOverIds();
             uint32_t root_id = Clay_GetElementId(CLAY_STRING("Clay__RootContainer")).id;
+            uint32_t brush_id = Clay_GetElementId(CLAY_STRING("BrushCursor")).id;
+            
             for (int i = 0; i < over_ids.length; i++) {
-                if (over_ids.internalArray[i].id != root_id) {
+                if (over_ids.internalArray[i].id != root_id && over_ids.internalArray[i].id != brush_id) {
                     ui_intercepted = true;
                     break;
                 }
@@ -310,7 +315,7 @@ static Clay_TextElementConfig layer_button_text_config = {
 static Clay_TextElementConfig tool_button_text_config = {
     .fontId = 0,
     .fontSize = 16,
-    .textColor = { 255, 255, 255, 255 }
+    .textColor = { 255, 255, 255, 255 },
 };
 
 static ButtonContext layer_button_context = {
@@ -324,7 +329,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
     switch (state->layers->current_tool) {
-        case TOOL_BRUSH: {
+        case TOOL_PEN: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
             state->layers->current_tool_radius = 2;
             break;
@@ -370,6 +375,32 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     
     Clay_BeginLayout();
 
+    float mx, my;
+    SDL_GetMouseState(&mx, &my);
+    
+    double scale = SDL_pow(2, state->canvas_zoom);
+    float screen_radius = (float)(state->layers->current_tool_radius * scale);
+
+    CLAY((Clay_ElementDeclaration){
+        .id = CLAY_ID("BrushCursor"),
+        .floating = {
+            .attachTo = CLAY_ATTACH_TO_ROOT,
+            .offset = { mx - screen_radius, my - screen_radius },
+        },
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_FIXED(screen_radius * 2),
+                .height = CLAY_SIZING_FIXED(screen_radius * 2)
+            }
+        },
+        .border = { 
+            .color = {150, 150, 150, 255}, // Gray border visible on most colors
+            .width = {.bottom = 2, .left = 2, .right = 2, .top = 2} 
+        },
+        // Setting cornerRadius to width/2 (the radius) produces a perfect circle
+        .cornerRadius = { screen_radius, screen_radius, screen_radius, screen_radius }
+    }) {}
+
     CLAY((Clay_ElementDeclaration){
         .id = CLAY_ID("LayerPanel"),
         .floating = {
@@ -379,12 +410,12 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM
             },
             .offset = {-20, -20}, 
-            .zIndex = 1,
+            .zIndex = CLAY_PANEL_Z_INDEX,
         },
         .layout = {
             .sizing = {
                 .width = CLAY_SIZING_FIXED(300),
-                .height = CLAY_SIZING_FIXED(400),
+                .height = CLAY_SIZING_FIT(120,400)//CLAY_SIZING_FIXED(400),
             },
             .layoutDirection = CLAY_TOP_TO_BOTTOM,
             .padding = {10, 10, 10, 10},
@@ -464,7 +495,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .parent = CLAY_ATTACH_POINT_LEFT_TOP
             },
             .offset = {20, 20},
-            .zIndex = 1,
+            .zIndex = CLAY_PANEL_Z_INDEX,
         },
         .layout = {
             .sizing = {
@@ -488,7 +519,10 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                     .padding = {5, 5},
                     .childGap = 10,
                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                    .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+                    .childAlignment = { 
+                        .x = CLAY_ALIGN_X_CENTER,
+                        .y = CLAY_ALIGN_Y_CENTER 
+                    }
                 },
                 .backgroundColor = (state->layers->current_tool==cur_tool) ? (Clay_Color){.r=80, .g=120, .b=200, .a=255} : (Clay_Color){.r=60, .g=60, .b=65, .a=255}
             }) {
@@ -497,7 +531,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 Clay_String cur_tool_clay_string = CLAY_STRING("Unknown");
 
                 switch (cur_tool) {
-                    case TOOL_BRUSH: {cur_tool_clay_string=CLAY_STRING("Brush");break;}
+                    case TOOL_PEN: {cur_tool_clay_string=CLAY_STRING("Pen");break;}
                     case TOOL_ERASER: {cur_tool_clay_string=CLAY_STRING("Eraser");break;}
                 }
 
