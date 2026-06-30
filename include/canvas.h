@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef CANVAS_H_
 #define CANVAS_H_
 #include <SDL3/SDL.h>

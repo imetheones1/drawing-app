@@ -1,7 +1,12 @@
+#pragma once
+
 #ifndef APPSTATE_H_
 #define APPSTATE_H_
 #include <SDL3/SDL.h>
 #include "canvas.h"
+
+#include "../Clay/clay.h"
+#include "../Clay/clay_sdl_binding.h"
 
 typedef struct Assets {
     // SDL_Texture *test_texture;
@@ -32,6 +37,8 @@ typedef struct AppState {
 
     Lines *cur_lines;
     bool is_edit_finish;
+
+    Clay_SDL3RendererData rendererData;
 } AppState;
 
 #endif

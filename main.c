@@ -5,9 +5,12 @@
 #include "include/assets.h"
 #include "include/canvas.h"
 
-#define ARENA_IMPLEMENTATION
-#include "include/arena.h"
+#define CLAY_IMPLEMENTATION
+#include "Clay/clay.h"
 
+void HandleClayErrors(Clay_ErrorData errorData) {
+    SDL_Log("Clay error: %s", errorData.errorText.chars);
+}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     AppState *state = SDL_calloc(1,sizeof(AppState));
@@ -44,6 +47,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->canvas_zoom = 0;
     state->canvas_x = 0;
     state->canvas_y = 0;
+
+    uint64_t totalMemorySize = Clay_MinMemorySize();
+    Clay_Arena clayMemory = (Clay_Arena) {
+        .memory = SDL_malloc(totalMemorySize),
+        .capacity = totalMemorySize
+    };
+
+    int width, height;
+    SDL_GetWindowSize(state->window, &width, &height);
+    Clay_Initialize(clayMemory, (Clay_Dimensions) { (float) width, (float) height }, (Clay_ErrorHandler) { HandleClayErrors });
+    // Clay_SetMeasureTextFunction(SDL_MeasureText, state->rendererData.fonts);
+
+    state->rendererData.renderer = state->renderer;
 
     *appstate = state;
     return SDL_APP_CONTINUE;
@@ -189,6 +205,28 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     canvas_dest.x = state->canvas_x + state->screen_width/2 - canvas_dest.w/2;
     canvas_dest.y = state->canvas_y + state->screen_height/2 - canvas_dest.h/2;
     SDL_RenderTextureRotated(state->renderer, state->layers->canvas_buffer,NULL,&canvas_dest,state->canvas_rotation,NULL,SDL_FLIP_NONE);
+
+    Clay_SetLayoutDimensions((Clay_Dimensions) { state->screen_width, state->screen_height });
+    
+
+    Clay_BeginLayout();
+
+    CLAY((Clay_ElementDeclaration){
+        .id = CLAY_ID("TestThing"),
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_GROW(),
+                .height = CLAY_SIZING_GROW(),
+            }
+        },
+        .backgroundColor = {.r=255,.g=0,.b=0,.a=255}
+    }) {
+
+    }
+
+    Clay_RenderCommandArray render_commands = Clay_EndLayout(); // todo add deltatime
+
+    SDL_Clay_RenderClayCommands(&(state->rendererData), &(render_commands));
 
     SDL_RenderPresent(state->renderer);
 

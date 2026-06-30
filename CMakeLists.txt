@@ -43,15 +43,14 @@ set(EMBEDDED_ASSET_SOURCES "")
 embed_asset("please.png" "asset_please" EMBEDDED_ASSET_SOURCES)
 
 
-add_executable(drawingapp 
-    main.c 
-    ${EMBEDDED_ASSET_SOURCES}
-)
+add_executable(drawingapp "main.c")
 
+target_sources(drawingapp PRIVATE ${EMBEDDED_ASSET_SOURCES})
 target_sources(drawingapp PRIVATE "assets.c")
 target_sources(drawingapp PRIVATE "canvas.c")
+target_sources(drawingapp PRIVATE "Clay/clay_renderer_SDL3.c")
 
-target_include_directories(drawingapp PRIVATE "include")
+target_include_directories(drawingapp PRIVATE "include" "Clay")
 
 target_link_libraries(drawingapp PRIVATE SDL3::SDL3 SDL3_image::SDL3_image SDL3_ttf::SDL3_ttf)
 
