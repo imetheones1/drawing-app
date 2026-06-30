@@ -300,7 +300,72 @@ static void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color
     }
 }
 
-static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, int radius) {
+// stamp logic
+
+typedef struct ToolStamp {
+    uint8_t *stamp; // array of opacities
+    size_t width;
+    size_t height;
+
+    int radius;
+    float softness;
+} ToolStamp;
+
+static inline uint8_t getBrushOpacity(float distance, float radius, float softness) {
+    if (distance >= radius) return 0;
+    if (softness >= 1.0f) softness = 0.99f;
+
+    float x = 1.0f - (distance / radius);
+
+    float x_adj = SDL_clamp((x - softness) / (1.0f - softness), 0.0f, 1.0f);
+
+    float opacity_float = x_adj * x_adj * (3.0f - 2.0f * x_adj);
+
+    return (uint8_t)(opacity_float * 255.0f);
+}
+
+static ToolStamp* generateToolStamp(int radius, float softness) {
+    ToolStamp* stamp_ptr = (ToolStamp*)malloc(sizeof(ToolStamp));
+    if (!stamp_ptr) return NULL;
+
+    size_t dim = (size_t)(radius * 2 + 1);
+    stamp_ptr->width = dim;
+    stamp_ptr->height = dim;
+    stamp_ptr->radius = radius;
+    stamp_ptr->softness = softness;
+
+    stamp_ptr->stamp = (uint8_t*)SDL_calloc(dim * dim, sizeof(uint8_t));
+    if (!stamp_ptr->stamp) {
+        SDL_free(stamp_ptr);
+        return NULL;
+    }
+
+    int center = radius; 
+    float f_radius = (float)radius;
+
+    for (int y = 0; y <= radius; y++) {
+        for (int x = 0; x <= radius; x++) {
+            
+            float dist = SDL_sqrtf((float)(x * x + y * y));
+
+            if (dist >= f_radius) break;
+
+            uint8_t opacity = getBrushOpacity(dist, f_radius, softness);
+
+            if (opacity > 0) {
+                stamp_ptr->stamp[(center + y) * dim + (center + x)] = opacity;
+                stamp_ptr->stamp[(center + y) * dim + (center - x)] = opacity;
+                stamp_ptr->stamp[(center - y) * dim + (center + x)] = opacity;
+                stamp_ptr->stamp[(center - y) * dim + (center - x)] = opacity;
+            }
+        }
+    }
+
+    return stamp_ptr;
+}
+
+
+static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, float radius) {
     int x0 = (int)SDL_roundf(p1.x);
     int y0 = (int)SDL_roundf(p1.y);
     int x1 = (int)SDL_roundf(p2.x);
@@ -336,7 +401,7 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
     }
 }
 
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, int radius) {
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius) {
     if (!lines || !layer || !layer->pixels) return false;
 
     if (lines->point_count < 2) return false;

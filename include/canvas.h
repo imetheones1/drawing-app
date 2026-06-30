@@ -44,7 +44,7 @@ typedef struct Layers {
 
     ToolType current_tool;
     uint32_t current_color;
-    int current_tool_radius;
+    float current_tool_radius;
 } Layers;
 
 /**
@@ -79,6 +79,6 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 void fillLayer(Layer *layer, uint32_t color);
 
 // apply all lines from a lines object to a given layer
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, int radius);
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius);
 
 #endif

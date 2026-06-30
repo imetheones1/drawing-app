@@ -445,12 +445,12 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     switch (state->layers->current_tool) {
         case TOOL_PEN: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
-            state->layers->current_tool_radius = SDL_max(1, SDL_atoi(tool_radius_textbox.text));
+            state->layers->current_tool_radius = SDL_max(1, SDL_atof(tool_radius_textbox.text));
             break;
         }
         case TOOL_ERASER: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
-            state->layers->current_tool_radius = SDL_max(1, SDL_atoi(tool_radius_textbox.text));
+            state->layers->current_tool_radius = SDL_max(1, SDL_atof(tool_radius_textbox.text));
             break;
         }
     }
