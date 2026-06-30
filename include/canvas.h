@@ -7,6 +7,8 @@
 typedef struct AppState AppState;
 typedef struct Lines Lines;
 
+extern SDL_Window* window_for_popups;
+
 typedef enum ToolType {
     TOOL_PEN,
     TOOL_ERASER,

@@ -53,6 +53,7 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
+    SDL_Log("initialization started");
     AppState *state = SDL_calloc(1,sizeof(AppState));
 
     if (!SDL_CreateWindowAndRenderer("drawing app", 800, 600, SDL_WINDOW_RESIZABLE, &(state->window), &(state->renderer))) {
@@ -61,13 +62,17 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     }
     SDL_SetRenderDrawBlendMode(state->renderer,SDL_BLENDMODE_BLEND);
 
+    window_for_popups = state->window;
+
     state->assets = SDL_malloc(sizeof(Assets));
+    returnIfNull(state->assets,"Memory allocation error","Failed to allocate memory for assets buffer: %s",SDL_GetError());
 
     // SDL_Surface *test_surface = loadAsset(asset_please,asset_please_len);
     // state->assets->test_texture = SDL_CreateTextureFromSurface(state->renderer,test_surface);
     // SDL_DestroySurface(test_surface);
 
     state->layers = SDL_calloc(1,sizeof(Layers));
+    returnIfNull(state->layers,"Memory allocation error","Failed to allocate memory for layers buffer: %s",SDL_GetError());
     state->layers->layer_count = 0;
     state->layers->width = 1000;
     state->layers->height = 1000;
@@ -82,6 +87,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->layers->cur_layer = state->layers->layer_count-1;
 
     state->cur_lines = SDL_malloc(sizeof(Lines));
+    returnIfNull(state->cur_lines,"Memory allocation error","Failed to allocate memory for lines buffer: %s",SDL_GetError());
     state->cur_lines->point_capacity = 10;
     state->cur_lines->points = SDL_calloc(state->cur_lines->point_capacity,sizeof(SDL_FPoint));
     state->cur_lines->point_count = 0;
@@ -96,6 +102,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
         .memory = SDL_malloc(totalMemorySize),
         .capacity = totalMemorySize
     };
+    returnIfNull(clayMemory.memory,"Memory allocation error","Failed to allocate memory for Clay: %s",SDL_GetError());
 
     int width, height;
     SDL_GetWindowSize(state->window, &width, &height);

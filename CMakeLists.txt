@@ -64,7 +64,6 @@ else()
     
     target_compile_options(drawingapp PRIVATE 
         -O3 
-        -march=native 
         -ffunction-sections 
         -fdata-sections
     )
@@ -72,5 +71,7 @@ else()
     target_link_options(drawingapp PRIVATE 
         -flto 
         -Wl,--gc-sections
+        $<$<C_COMPILER_ID:GNU>:-static>
+        $<$<C_COMPILER_ID:Clang>:-static>
     )
 endif()

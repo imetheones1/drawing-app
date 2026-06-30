@@ -2,6 +2,8 @@
 #include "include/appstate.h"
 #include "include/canvas.h"
 
+SDL_Window* window_for_popups;
+
 static void expandDirtyRect(Layer* layer, int x, int y) {
     if (!layer->has_dirty_rect) {
         layer->dirty_x1 = x;
@@ -20,6 +22,7 @@ static void expandDirtyRect(Layer* layer, int x, int y) {
 static void updateLayerTexture(SDL_Renderer* renderer, Layer* cur_layer) {
     if (!cur_layer->texture) {
         cur_layer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, cur_layer->width, cur_layer->height);
+        quitIfNull(cur_layer->texture,"Texture allocation error","Failed to create texture for layer: %s",SDL_GetError());
         SDL_SetTextureBlendMode(cur_layer->texture, SDL_BLENDMODE_BLEND);
         cur_layer->is_changed = true;
     }
@@ -52,15 +55,19 @@ static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
     if (!layers->canvas_buffer) {
         layers->canvas_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        quitIfNull(layers->canvas_buffer,"Texture allocation error","Failed to create texture for canvas buffer: %s",SDL_GetError());
         SDL_SetTextureScaleMode(layers->canvas_buffer, SDL_SCALEMODE_NEAREST);
 
         layers->below_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        quitIfNull(layers->below_buffer,"Texture allocation error","Failed to create texture for canvas below buffer: %s",SDL_GetError());
         SDL_SetTextureBlendMode(layers->below_buffer, SDL_BLENDMODE_BLEND);
 
         layers->above_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        quitIfNull(layers->above_buffer,"Texture allocation error","Failed to create texture for canvas above buffer: %s",SDL_GetError());
         SDL_SetTextureBlendMode(layers->above_buffer, SDL_BLENDMODE_BLEND);
         
         layers->active_layer_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        quitIfNull(layers->active_layer_buffer,"Texture allocation error","Failed to create texture for canvas active layer buffer: %s",SDL_GetError());
         SDL_SetTextureBlendMode(layers->active_layer_buffer, SDL_BLENDMODE_BLEND);
 
         layers->last_cur_layer = (size_t)-1;
@@ -143,10 +150,12 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
 }
 
 Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb, size_t size)) {
+    uint32_t* allocated_pixels = (uint32_t*)(calloc_func(height * width, sizeof(uint32_t)));
+    quitIfNull(allocated_pixels,"Pixel allocation error","Failed to allocate pixel buffer: %s",SDL_GetError()); // todo make get error function a parameter
     return (Layer){
         .height = height,
         .width = width,
-        .pixels = (uint32_t*)(calloc_func(height * width, sizeof(uint32_t))),
+        .pixels = allocated_pixels,
         .texture = NULL,
         .is_changed = true,
         .has_dirty_rect = false,
@@ -157,6 +166,7 @@ Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size)) {
     layers->layer_count++;
     layers->layers = (Layer*)(realloc_func(layers->layers, layers->layer_count * sizeof(Layer)));
+    quitIfNull(layers->layers,"Layer allocation error","Failed to allocate layers buffer: %s",SDL_GetError()); // todo make get error function a parameter
     layers->layers[layers->layer_count - 1] = createLayer(layers->height, layers->width, calloc_func);
     layers->static_layers_changed = true;
 }
