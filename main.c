@@ -261,7 +261,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
 
     if (state->is_edit_finish) {
         state->is_edit_finish = false;
-        mergeLayers(&(state->layers->layers[state->layers->cur_layer]),&(state->layers->edit_layer));
+        mergeLayers(&(state->layers->layers[state->layers->cur_layer]),&(state->layers->edit_layer),false);
         fillLayer(&(state->layers->edit_layer),0);
         state->layers->edit_layer.is_changed = true;
         state->should_redraw = true;

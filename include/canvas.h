@@ -50,7 +50,7 @@ Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
 
 // apply all information from src to dest
-void mergeLayers(Layer* restrict dest, const Layer* restrict src);
+void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite);
 
 // drawing functions
 

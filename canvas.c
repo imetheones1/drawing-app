@@ -127,7 +127,7 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
     layers->static_layers_changed = true;
 }
 
-void mergeLayers(Layer* restrict dest, const Layer* restrict src) {
+void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite) {
     if (dest->width != src->width || dest->height != src->height) return; 
 
     size_t total_pixels = dest->width * dest->height;
@@ -141,7 +141,7 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src) {
         if (sa == 0) {
             continue;
         }
-        if (sa == 255) {
+        if (sa == 255 || overwrite) {
             d_px[i] = sp;
             continue;
         }
