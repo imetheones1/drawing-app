@@ -40,7 +40,7 @@ function(embed_asset ASSET_PATH VARIABLE_NAME OUTPUT_LIST)
 endfunction()
 
 set(EMBEDDED_ASSET_SOURCES "")
-embed_asset("please.png" "asset_please" EMBEDDED_ASSET_SOURCES)
+embed_asset("fonts/Roboto-Regular.ttf" "asset_font_roboto" EMBEDDED_ASSET_SOURCES)
 
 
 add_executable(drawingapp "main.c")

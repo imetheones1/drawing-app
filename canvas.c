@@ -96,7 +96,7 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
         layers->static_layers_changed = false;
     }
 
-    if (layers->edit_layer.is_changed||(layers->cur_layer < layers->layer_count&&layers->layers[layers->cur_layer].is_changed)){
+    if (needs_cache_update||layers->edit_layer.is_changed||(layers->cur_layer < layers->layer_count&&layers->layers[layers->cur_layer].is_changed)){
         SDL_SetRenderTarget(renderer, layers->active_layer_buffer);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);

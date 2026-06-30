@@ -4,6 +4,7 @@
 #include "include/appstate.h"
 #include "include/assets.h"
 #include "include/canvas.h"
+#include <SDL3_ttf/SDL_ttf.h>
 
 #define CLAY_IMPLEMENTATION
 #include "Clay/clay.h"
@@ -17,6 +18,20 @@ typedef struct ButtonContext {
     enum ButtonType type;
     AppState *state;
 } ButtonContext;
+
+static inline Clay_Dimensions SDL_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData) {
+    TTF_Font **fonts = userData;
+    TTF_Font *font = fonts[config->fontId];
+    int width = 0, height = 0;
+
+    TTF_SetFontSize(font, config->fontSize);
+    
+    if (!TTF_GetStringSize(font, text.chars, text.length, &width, &height)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to measure text: %s", SDL_GetError());
+    }
+
+    return (Clay_Dimensions) { (float) width, (float) height };
+}
 
 void HandleClayErrors(Clay_ErrorData errorData) {
     SDL_Log("Clay error: %s", errorData.errorText.chars);
@@ -85,9 +100,35 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     int width, height;
     SDL_GetWindowSize(state->window, &width, &height);
     Clay_Initialize(clayMemory, (Clay_Dimensions) { (float) width, (float) height }, (Clay_ErrorHandler) { HandleClayErrors });
-    // Clay_SetMeasureTextFunction(SDL_MeasureText, state->rendererData.fonts);
-
+    
     state->rendererData.renderer = state->renderer;
+
+    if (!TTF_Init()) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't initialize TTF: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    state->rendererData.textEngine = TTF_CreateRendererTextEngine(state->rendererData.renderer);
+    if (!state->rendererData.textEngine) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create text engine from renderer: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    state->rendererData.fonts = SDL_calloc(1, sizeof(TTF_Font *));
+    if (!state->rendererData.fonts) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to allocate memory for the font array: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    TTF_Font *font = loadFontAsset(asset_font_roboto, asset_font_roboto_len, 24.0f);
+    if (!font) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load font: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    state->rendererData.fonts[0] = font;
+    
+    Clay_SetMeasureTextFunction(SDL_MeasureText, state->rendererData.fonts);
 
     SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
     Clay_SetLayoutDimensions((Clay_Dimensions) { (float)state->screen_width, (float)state->screen_height });
@@ -261,6 +302,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
     return SDL_APP_CONTINUE;
 }
 
+static Clay_TextElementConfig layer_button_text_config = {
+    .fontId = 0,
+    .fontSize = 16,
+    .textColor = { 255, 255, 255, 255 }
+};
+static Clay_TextElementConfig tool_button_text_config = {
+    .fontId = 0,
+    .fontSize = 16,
+    .textColor = { 255, 255, 255, 255 }
+};
+
 static ButtonContext layer_button_context = {
     .type = BUTTON_LAYER
 };
@@ -313,6 +365,8 @@ SDL_AppResult SDL_AppIterate(void *appstate){
 
     layer_button_context.state = state;
     tool_button_context.state = state;
+
+    char layers_text[25*state->layers->layer_count];
     
     Clay_BeginLayout();
 
@@ -384,6 +438,18 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                         },
                         .border = {.color = {.r=0,.g=0,.b=0,.a=255}, .width = {.bottom=2,.left=2,.right=2,.top=2}}
                     }) {}
+
+                    char* cur_layer_text_pointer = layers_text+(i*20);
+
+                    SDL_snprintf(cur_layer_text_pointer,20,"Layer %zu",i);
+
+                    Clay_String cur_clay_string = {
+                        .chars=cur_layer_text_pointer,
+                        .length=SDL_strnlen(cur_layer_text_pointer,20),
+                        .isStaticallyAllocated = false
+                    };
+
+                    CLAY_TEXT(cur_clay_string,&layer_button_text_config);
                 }
             }
         }
@@ -428,6 +494,14 @@ SDL_AppResult SDL_AppIterate(void *appstate){
             }) {
                 Clay_OnHover(&HandleButtonInteraction, (intptr_t)(&tool_button_context));
 
+                Clay_String cur_tool_clay_string = CLAY_STRING("Unknown");
+
+                switch (cur_tool) {
+                    case TOOL_BRUSH: {cur_tool_clay_string=CLAY_STRING("Brush");break;}
+                    case TOOL_ERASER: {cur_tool_clay_string=CLAY_STRING("Eraser");break;}
+                }
+
+                CLAY_TEXT(cur_tool_clay_string,&tool_button_text_config);
             }
         }
     }
