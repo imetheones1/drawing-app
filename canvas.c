@@ -96,32 +96,34 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
         layers->static_layers_changed = false;
     }
 
-    SDL_SetRenderTarget(renderer, layers->active_layer_buffer);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-    SDL_RenderClear(renderer);
+    if (layers->edit_layer.is_changed||(layers->cur_layer < layers->layer_count&&layers->layers[layers->cur_layer].is_changed)){
+        SDL_SetRenderTarget(renderer, layers->active_layer_buffer);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
 
-    if (layers->cur_layer < layers->layer_count) {
-        drawLayerToRenderer(renderer, &(layers->layers[layers->cur_layer]));
-    }
-    
-    updateLayerTexture(renderer, &(layers->edit_layer));
-    if (layers->edit_layer.texture) {
-        SDL_BlendMode old_blend;
-        SDL_GetTextureBlendMode(layers->edit_layer.texture, &old_blend);
-        
-        if (layers->current_tool == TOOL_ERASER) {
-            SDL_BlendMode erase_mode = SDL_ComposeCustomBlendMode(
-                SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
-                SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD
-            );
-            SDL_SetTextureBlendMode(layers->edit_layer.texture, erase_mode);
+        if (layers->cur_layer < layers->layer_count) {
+            drawLayerToRenderer(renderer, &(layers->layers[layers->cur_layer]));
         }
         
-        SDL_RenderTexture(renderer, layers->edit_layer.texture, NULL, NULL);
-        SDL_SetTextureBlendMode(layers->edit_layer.texture, old_blend);
+        updateLayerTexture(renderer, &(layers->edit_layer));
+        if (layers->edit_layer.texture) {
+            SDL_BlendMode old_blend;
+            SDL_GetTextureBlendMode(layers->edit_layer.texture, &old_blend);
+            
+            if (layers->current_tool == TOOL_ERASER) {
+                SDL_BlendMode erase_mode = SDL_ComposeCustomBlendMode(
+                    SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                    SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD
+                );
+                SDL_SetTextureBlendMode(layers->edit_layer.texture, erase_mode);
+            }
+            
+            SDL_RenderTexture(renderer, layers->edit_layer.texture, NULL, NULL);
+            SDL_SetTextureBlendMode(layers->edit_layer.texture, old_blend);
+        }
     }
-
     SDL_SetRenderTarget(renderer, layers->canvas_buffer);
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 

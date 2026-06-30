@@ -9,7 +9,8 @@
 #include "Clay/clay.h"
 
 enum ButtonType {
-    BUTTON_LAYER
+    BUTTON_LAYER,
+    BUTTON_TOOL
 };
 
 typedef struct ButtonContext {
@@ -25,7 +26,14 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
     ButtonContext *context = (ButtonContext*)userData;
     if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
         context->state->should_redraw = true;
-        if (context->type == BUTTON_LAYER) context->state->layers->cur_layer = elementId.offset;
+        if (context->type == BUTTON_LAYER) {
+            context->state->layers->cur_layer = elementId.offset;
+        }
+        else if (context->type == BUTTON_TOOL) {
+            context->state->layers->current_tool = elementId.offset;
+            SDL_Log("Switched Tool To: %s", context->state->layers->current_tool == TOOL_BRUSH ? "BRUSH" : "ERASER");
+
+        }
     }
 }
 
@@ -133,9 +141,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                 }
                 case SDL_BUTTON_RIGHT: {
                     state->mouse2 = true;
-                    // Toggle current tool for testing
-                    state->layers->current_tool = (state->layers->current_tool == TOOL_BRUSH) ? TOOL_ERASER : TOOL_BRUSH;
-                    SDL_Log("Switched Tool To: %s", state->layers->current_tool == TOOL_BRUSH ? "BRUSH" : "ERASER");
                     break;
                 }
                 case SDL_BUTTON_MIDDLE: {state->mouse3=true;break;}
@@ -259,6 +264,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 static ButtonContext layer_button_context = {
     .type = BUTTON_LAYER
 };
+static ButtonContext tool_button_context = {
+    .type = BUTTON_TOOL
+};
 
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
@@ -304,14 +312,20 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     SDL_RenderTextureRotated(state->renderer, state->layers->canvas_buffer,NULL,&canvas_dest,state->canvas_rotation,NULL,SDL_FLIP_NONE);
 
     layer_button_context.state = state;
+    tool_button_context.state = state;
     
     Clay_BeginLayout();
 
     CLAY((Clay_ElementDeclaration){
         .id = CLAY_ID("LayerPanel"),
         .floating = {
-            .offset = {20, 20},
-            .zIndex = 1
+            .attachTo = CLAY_ATTACH_TO_ROOT,
+            .attachPoints = {
+                .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM,
+                .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM
+            },
+            .offset = {-20, -20}, 
+            .zIndex = 1,
         },
         .layout = {
             .sizing = {
@@ -319,7 +333,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .height = CLAY_SIZING_FIXED(400),
             },
             .layoutDirection = CLAY_TOP_TO_BOTTOM,
-            .padding = {10, 10},
+            .padding = {10, 10, 10, 10},
             .childGap = 10
         },
         .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
@@ -339,7 +353,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 .childOffset = Clay_GetScrollOffset()
             }
         }) {
-            for (size_t i = state->layers->layer_count; i-- >0;) {
+            for (size_t i = state->layers->layer_count; i-- > 0;) {
                 bool is_active = (state->layers->cur_layer == i);
                 CLAY((Clay_ElementDeclaration){
                     .id = CLAY_IDI("LayerBtn", (int)i),
@@ -368,14 +382,57 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                         .image = {
                             .imageData = state->layers->layers[i].texture,
                         },
-                        .border = {.color = {.r=0,.g=0,.b=0,.a=255},.width = {.bottom=2,.left=2,.right=2,.top=2}}
+                        .border = {.color = {.r=0,.g=0,.b=0,.a=255}, .width = {.bottom=2,.left=2,.right=2,.top=2}}
                     }) {}
                 }
             }
         }
     }
 
-    Clay_RenderCommandArray render_commands = Clay_EndLayout(); 
+    CLAY((Clay_ElementDeclaration){
+        .id = CLAY_ID("ToolPanel"),
+        .floating = {
+            .attachTo = CLAY_ATTACH_TO_ROOT,
+            .attachPoints = {
+                .element = CLAY_ATTACH_POINT_LEFT_TOP,
+                .parent = CLAY_ATTACH_POINT_LEFT_TOP
+            },
+            .offset = {20, 20},
+            .zIndex = 1,
+        },
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_FIXED(100),
+                // .height = CLAY_SIZING_FIXED(200),
+            },
+            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+            .padding = {10, 10, 10, 10},
+            .childGap = 10
+        },
+        .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
+    }) {
+        for (ToolType cur_tool = 0; cur_tool < TOOL_COUNT; cur_tool++){
+            CLAY((Clay_ElementDeclaration){
+                .id = CLAY_IDI("ToolBtn", (int)cur_tool),
+                .layout = {
+                    .sizing = {
+                        .width = CLAY_SIZING_GROW(),
+                        .height = CLAY_SIZING_FIXED(50),
+                    },
+                    .padding = {5, 5},
+                    .childGap = 10,
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                    .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+                },
+                .backgroundColor = (state->layers->current_tool==cur_tool) ? (Clay_Color){.r=80, .g=120, .b=200, .a=255} : (Clay_Color){.r=60, .g=60, .b=65, .a=255}
+            }) {
+                Clay_OnHover(&HandleButtonInteraction, (intptr_t)(&tool_button_context));
+
+            }
+        }
+    }
+
+    Clay_RenderCommandArray render_commands = Clay_EndLayout();
 
     SDL_Clay_RenderClayCommands(&(state->rendererData), &(render_commands));
 

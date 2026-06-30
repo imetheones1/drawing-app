@@ -9,7 +9,8 @@ typedef struct Lines Lines;
 
 typedef enum ToolType {
     TOOL_BRUSH,
-    TOOL_ERASER
+    TOOL_ERASER,
+    TOOL_COUNT // do not use as a tool
 } ToolType;
 
 typedef struct Layer {
