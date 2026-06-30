@@ -7,6 +7,11 @@
 typedef struct AppState AppState;
 typedef struct Lines Lines;
 
+typedef enum ToolType {
+    TOOL_BRUSH,
+    TOOL_ERASER
+} ToolType;
+
 typedef struct Layer {
     uint32_t* pixels; // RGBA8888
     SDL_Texture* texture;
@@ -30,8 +35,12 @@ typedef struct Layers {
 
     SDL_Texture* below_buffer;
     SDL_Texture* above_buffer;
+    SDL_Texture* active_layer_buffer;
     size_t last_cur_layer;
     bool static_layers_changed;
+
+    ToolType current_tool;
+    uint32_t current_color;
 } Layers;
 
 /**
@@ -50,7 +59,7 @@ Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
 
 // apply all information from src to dest
-void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite);
+void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite, const bool is_eraser);
 
 // drawing functions
 
@@ -64,6 +73,6 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 void fillLayer(Layer *layer, uint32_t color);
 
 // apply all lines from a lines object to a given layer
-bool drawLinesToLayer(Lines *lines, Layer *layer);
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color);
 
 #endif

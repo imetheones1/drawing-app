@@ -131,7 +131,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 
                     break;
                 }
-                case SDL_BUTTON_RIGHT: {state->mouse2=true;break;}
+                case SDL_BUTTON_RIGHT: {
+                    state->mouse2 = true;
+                    // Toggle current tool for testing
+                    state->layers->current_tool = (state->layers->current_tool == TOOL_BRUSH) ? TOOL_ERASER : TOOL_BRUSH;
+                    SDL_Log("Switched Tool To: %s", state->layers->current_tool == TOOL_BRUSH ? "BRUSH" : "ERASER");
+                    break;
+                }
                 case SDL_BUTTON_MIDDLE: {state->mouse3=true;break;}
             }
             break;
@@ -257,12 +263,23 @@ static ButtonContext layer_button_context = {
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
-    if (drawLinesToLayer(state->cur_lines,&(state->layers->edit_layer))) state->should_redraw = true;
+    switch (state->layers->current_tool) {
+        case TOOL_BRUSH: {
+            state->layers->current_color = makeColor(0, 0, 0, 255);
+            break;
+        }
+        case TOOL_ERASER: {
+            state->layers->current_color = makeColor(0, 0, 0, 255);
+            break;
+        }
+    }
+
+    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer),state->layers->current_color)) state->should_redraw = true;
 
     if (state->is_edit_finish) {
         state->is_edit_finish = false;
-        mergeLayers(&(state->layers->layers[state->layers->cur_layer]),&(state->layers->edit_layer),false);
-        fillLayer(&(state->layers->edit_layer),0);
+        mergeLayers(&(state->layers->layers[state->layers->cur_layer]), &(state->layers->edit_layer), false, (state->layers->current_tool == TOOL_ERASER));
+        fillLayer(&(state->layers->edit_layer), 0);
         state->layers->edit_layer.is_changed = true;
         state->should_redraw = true;
     }
@@ -272,7 +289,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);
 
-    compositeLayers(state->renderer,state->layers);
+    compositeLayers(state->renderer, state->layers);
     state->should_redraw = false;
 
     double zoom_factor = SDL_pow(2,state->canvas_zoom);

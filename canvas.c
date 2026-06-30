@@ -17,7 +17,7 @@ static void expandDirtyRect(Layer* layer, int x, int y) {
     }
 }
 
-static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
+static void updateLayerTexture(SDL_Renderer* renderer, Layer* cur_layer) {
     if (!cur_layer->texture) {
         cur_layer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, cur_layer->width, cur_layer->height);
         SDL_SetTextureBlendMode(cur_layer->texture, SDL_BLENDMODE_BLEND);
@@ -42,6 +42,10 @@ static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
         }
         cur_layer->is_changed = false;
     }
+}
+
+static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
+    updateLayerTexture(renderer, cur_layer);
     SDL_RenderTexture(renderer, cur_layer->texture, NULL, NULL);
 }
 
@@ -55,6 +59,9 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
 
         layers->above_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
         SDL_SetTextureBlendMode(layers->above_buffer, SDL_BLENDMODE_BLEND);
+        
+        layers->active_layer_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        SDL_SetTextureBlendMode(layers->active_layer_buffer, SDL_BLENDMODE_BLEND);
 
         layers->last_cur_layer = (size_t)-1;
         layers->static_layers_changed = true;
@@ -89,18 +96,37 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
         layers->static_layers_changed = false;
     }
 
+    SDL_SetRenderTarget(renderer, layers->active_layer_buffer);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+
+    if (layers->cur_layer < layers->layer_count) {
+        drawLayerToRenderer(renderer, &(layers->layers[layers->cur_layer]));
+    }
+    
+    updateLayerTexture(renderer, &(layers->edit_layer));
+    if (layers->edit_layer.texture) {
+        SDL_BlendMode old_blend;
+        SDL_GetTextureBlendMode(layers->edit_layer.texture, &old_blend);
+        
+        if (layers->current_tool == TOOL_ERASER) {
+            SDL_BlendMode erase_mode = SDL_ComposeCustomBlendMode(
+                SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD
+            );
+            SDL_SetTextureBlendMode(layers->edit_layer.texture, erase_mode);
+        }
+        
+        SDL_RenderTexture(renderer, layers->edit_layer.texture, NULL, NULL);
+        SDL_SetTextureBlendMode(layers->edit_layer.texture, old_blend);
+    }
+
     SDL_SetRenderTarget(renderer, layers->canvas_buffer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 
     SDL_RenderTexture(renderer, layers->below_buffer, NULL, NULL);
-    
-    if (layers->cur_layer < layers->layer_count) {
-        drawLayerToRenderer(renderer, &(layers->layers[layers->cur_layer]));
-    }
-    
-    drawLayerToRenderer(renderer, &(layers->edit_layer));
-
+    SDL_RenderTexture(renderer, layers->active_layer_buffer, NULL, NULL);
     SDL_RenderTexture(renderer, layers->above_buffer, NULL, NULL);
 
     SDL_SetRenderTarget(renderer, prev_target);
@@ -127,7 +153,7 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
     layers->static_layers_changed = true;
 }
 
-void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite) {
+void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite, const bool is_eraser) {
     if (dest->width != src->width || dest->height != src->height) return; 
 
     size_t total_pixels = dest->width * dest->height;
@@ -138,34 +164,38 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool ove
         uint32_t sp = s_px[i];
         uint32_t sa = sp & 0xFF;
 
-        if (sa == 0) {
-            continue;
-        }
-        if (sa == 255 || overwrite) {
-            d_px[i] = sp;
-            continue;
-        }
+        if (sa == 0) continue;
 
         uint32_t dp = d_px[i];
         uint32_t da = dp & 0xFF;
-        
-        uint32_t sr = (sp >> 24) & 0xFF;
-        uint32_t sg = (sp >> 16) & 0xFF;
-        uint32_t sb = (sp >> 8) & 0xFF;
 
-        uint32_t dr = (dp >> 24) & 0xFF;
-        uint32_t dg = (dp >> 16) & 0xFF;
-        uint32_t db = (dp >> 8) & 0xFF;
+        if (is_eraser) {
+            uint32_t inv_sa = 255 - sa;
+            uint8_t out_a = (da * inv_sa) / 255;
+            d_px[i] = (dp & 0xFFFFFF00) | out_a; 
+        } else {
+            if (sa == 255 || overwrite) {
+                d_px[i] = sp;
+                continue;
+            }
 
-        uint32_t inv_sa = 255 - sa;
+            uint32_t sr = (sp >> 24) & 0xFF;
+            uint32_t sg = (sp >> 16) & 0xFF;
+            uint32_t sb = (sp >> 8) & 0xFF;
 
-        uint8_t out_r = (sr * sa + dr * inv_sa) / 255;
-        uint8_t out_g = (sg * sa + dg * inv_sa) / 255;
-        uint8_t out_b = (sb * sa + db * inv_sa) / 255;
-        
-        uint8_t out_a = sa + (da * inv_sa) / 255;
+            uint32_t dr = (dp >> 24) & 0xFF;
+            uint32_t dg = (dp >> 16) & 0xFF;
+            uint32_t db = (dp >> 8) & 0xFF;
 
-        d_px[i] = makeColor(out_r,out_g,out_b,out_a);
+            uint32_t inv_sa = 255 - sa;
+
+            uint8_t out_r = (sr * sa + dr * inv_sa) / 255;
+            uint8_t out_g = (sg * sa + dg * inv_sa) / 255;
+            uint8_t out_b = (sb * sa + db * inv_sa) / 255;
+            uint8_t out_a = sa + (da * inv_sa) / 255;
+
+            d_px[i] = makeColor(out_r,out_g,out_b,out_a);
+        }
     }
 
     dest->dirty_x1 = 0;
@@ -175,6 +205,7 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool ove
     dest->has_dirty_rect = true;
     dest->is_changed = true;
 }
+
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y) {
     double center_x = (state->screen_width / 2.0) + state->canvas_x;
     double center_y = (state->screen_height / 2.0) + state->canvas_y;
@@ -287,15 +318,14 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
     }
 }
 
-bool drawLinesToLayer(Lines *lines, Layer *layer) {
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color) {
     if (!lines || !layer || !layer->pixels) return false;
 
     if (lines->point_count < 2) return false;
 
-    uint32_t brush_color = makeColor(0, 0, 0, 255);
 
     for (size_t i = 0; i < lines->point_count - 1; i++) {
-        drawLineSegment(layer, lines->points[i], lines->points[i + 1], brush_color);
+        drawLineSegment(layer, lines->points[i], lines->points[i + 1], color);
     }
 
     layer->is_changed = true;
