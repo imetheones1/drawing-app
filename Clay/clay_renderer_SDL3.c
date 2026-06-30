@@ -249,6 +249,9 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData, Clay_Rende
             case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
                 SDL_Texture *texture = (SDL_Texture *)rcmd->renderData.image.imageData;
                 const SDL_FRect dest = { rect.x, rect.y, rect.w, rect.h };
+                
+                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
                 SDL_RenderTexture(rendererData->renderer, texture, NULL, &dest);
                 break;
             }
