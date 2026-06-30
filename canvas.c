@@ -2,36 +2,109 @@
 #include "include/appstate.h"
 #include "include/canvas.h"
 
+static void expandDirtyRect(Layer* layer, int x, int y) {
+    if (!layer->has_dirty_rect) {
+        layer->dirty_x1 = x;
+        layer->dirty_y1 = y;
+        layer->dirty_x2 = x;
+        layer->dirty_y2 = y;
+        layer->has_dirty_rect = true;
+    } else {
+        if (x < layer->dirty_x1) layer->dirty_x1 = x;
+        if (x > layer->dirty_x2) layer->dirty_x2 = x;
+        if (y < layer->dirty_y1) layer->dirty_y1 = y;
+        if (y > layer->dirty_y2) layer->dirty_y2 = y;
+    }
+}
+
 static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
     if (!cur_layer->texture) {
         cur_layer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, cur_layer->width, cur_layer->height);
         SDL_SetTextureBlendMode(cur_layer->texture, SDL_BLENDMODE_BLEND);
         cur_layer->is_changed = true;
     }
+    
     if (cur_layer->is_changed) {
-        SDL_UpdateTexture(cur_layer->texture, NULL, cur_layer->pixels, cur_layer->width * sizeof(uint32_t));
+        if (cur_layer->has_dirty_rect) {
+            int x1 = cur_layer->dirty_x1 < 0 ? 0 : cur_layer->dirty_x1;
+            int y1 = cur_layer->dirty_y1 < 0 ? 0 : cur_layer->dirty_y1;
+            int x2 = cur_layer->dirty_x2 >= (int)cur_layer->width ? (int)cur_layer->width - 1 : cur_layer->dirty_x2;
+            int y2 = cur_layer->dirty_y2 >= (int)cur_layer->height ? (int)cur_layer->height - 1 : cur_layer->dirty_y2;
+
+            if (x1 <= x2 && y1 <= y2) {
+                SDL_Rect rect = { x1, y1, x2 - x1 + 1, y2 - y1 + 1 };
+                uint32_t* src_pixels = cur_layer->pixels + (y1 * cur_layer->width + x1);
+                SDL_UpdateTexture(cur_layer->texture, &rect, src_pixels, cur_layer->width * sizeof(uint32_t));
+            }
+            cur_layer->has_dirty_rect = false;
+        } else {
+            SDL_UpdateTexture(cur_layer->texture, NULL, cur_layer->pixels, cur_layer->width * sizeof(uint32_t));
+        }
         cur_layer->is_changed = false;
     }
     SDL_RenderTexture(renderer, cur_layer->texture, NULL, NULL);
 }
 
-SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers){
+SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
     if (!layers->canvas_buffer) {
         layers->canvas_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
-        SDL_SetTextureScaleMode(layers->canvas_buffer,SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(layers->canvas_buffer, SDL_SCALEMODE_NEAREST);
+
+        layers->below_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        SDL_SetTextureBlendMode(layers->below_buffer, SDL_BLENDMODE_BLEND);
+
+        layers->above_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
+        SDL_SetTextureBlendMode(layers->above_buffer, SDL_BLENDMODE_BLEND);
+
+        layers->last_cur_layer = (size_t)-1;
+        layers->static_layers_changed = true;
     }
+
+    for (size_t i = 0; i < layers->layer_count; i++){
+        if (layers->layers[i].is_changed) {
+            layers->static_layers_changed = true;
+            break;
+        }
+    }
+
+    bool needs_cache_update = layers->static_layers_changed || (layers->last_cur_layer != layers->cur_layer);
     SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
+
+    if (needs_cache_update) {
+        SDL_SetRenderTarget(renderer, layers->below_buffer);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+        for (size_t i = 0; i < layers->cur_layer; i++) {
+            drawLayerToRenderer(renderer, &(layers->layers[i]));
+        }
+
+        SDL_SetRenderTarget(renderer, layers->above_buffer);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+        for (size_t i = layers->cur_layer + 1; i < layers->layer_count; i++) {
+            drawLayerToRenderer(renderer, &(layers->layers[i]));
+        }
+
+        layers->last_cur_layer = layers->cur_layer;
+        layers->static_layers_changed = false;
+    }
+
     SDL_SetRenderTarget(renderer, layers->canvas_buffer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    for (size_t index = 0; index < layers->layer_count; index++){
-        // Layer* cur_layer = &(layers->layers[index]);
-        drawLayerToRenderer(renderer,&(layers->layers[index]));
-        if (index==layers->cur_layer) {
-            drawLayerToRenderer(renderer,&(layers->edit_layer));
-        }
+
+    SDL_RenderTexture(renderer, layers->below_buffer, NULL, NULL);
+    
+    if (layers->cur_layer < layers->layer_count) {
+        drawLayerToRenderer(renderer, &(layers->layers[layers->cur_layer]));
     }
+    
+    drawLayerToRenderer(renderer, &(layers->edit_layer));
+
+    SDL_RenderTexture(renderer, layers->above_buffer, NULL, NULL);
+
     SDL_SetRenderTarget(renderer, prev_target);
+
     return layers->canvas_buffer;
 }
 
@@ -41,20 +114,21 @@ Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb
         .width = width,
         .pixels = (uint32_t*)(calloc_func(height * width, sizeof(uint32_t))),
         .texture = NULL,
-        .is_changed = true
+        .is_changed = true,
+        .has_dirty_rect = false,
+        .dirty_x1 = 0, .dirty_y1 = 0, .dirty_x2 = 0, .dirty_y2 = 0
     };
 }
 
 void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size)) {
     layers->layer_count++;
     layers->layers = (Layer*)(realloc_func(layers->layers, layers->layer_count * sizeof(Layer)));
-    layers->layers[layers->layer_count - 1] = createLayer(layers->height,layers->width,calloc_func);
+    layers->layers[layers->layer_count - 1] = createLayer(layers->height, layers->width, calloc_func);
+    layers->static_layers_changed = true;
 }
 
 void mergeLayers(Layer* restrict dest, const Layer* restrict src) {
-    if (dest->width != src->width || dest->height != src->height) {
-        return; 
-    }
+    if (dest->width != src->width || dest->height != src->height) return; 
 
     size_t total_pixels = dest->width * dest->height;
     uint32_t* restrict d_px = dest->pixels;
@@ -94,9 +168,13 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src) {
         d_px[i] = makeColor(out_r,out_g,out_b,out_a);
     }
 
+    dest->dirty_x1 = 0;
+    dest->dirty_y1 = 0;
+    dest->dirty_x2 = dest->width - 1;
+    dest->dirty_y2 = dest->height - 1;
+    dest->has_dirty_rect = true;
     dest->is_changed = true;
 }
-
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y) {
     double center_x = (state->screen_width / 2.0) + state->canvas_x;
     double center_y = (state->screen_height / 2.0) + state->canvas_y;
@@ -123,23 +201,32 @@ void fillLayer(Layer *layer, uint32_t color) {
     for (size_t index = 0; index < layer->width*layer->height; index++){
         layer->pixels[index] = color;
     }
+    layer->dirty_x1 = 0;
+    layer->dirty_y1 = 0;
+    layer->dirty_x2 = layer->width - 1;
+    layer->dirty_y2 = layer->height - 1;
+    layer->has_dirty_rect = true;
+    layer->is_changed = true;
 }
 
-
-// drawing
-
 void drawHorizontalLine(Layer *layer, int x1, int x2, int y, uint32_t color){
-    if (y<0||y>=layer->height) return;
+    if (y < 0 || y >= layer->height) return;
+    
+    expandDirtyRect(layer, x1, y);
+    expandDirtyRect(layer, x2, y);
+
     for (int x = x1; x <= x2; x++){
-        if (x<0) continue;
-        if (x>=layer->width) break;
+        if (x < 0) continue;
+        if (x >= layer->width) break;
         layer->pixels[y * layer->width + x] = color;
     }
 }
 
 void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
-    const int d = r * 2;
+    expandDirtyRect(layer, cx - r, cy - r);
+    expandDirtyRect(layer, cx + r, cy + r);
 
+    const int d = r * 2;
     int x = r-1;
     int y = 0;
     int tx = 1;
@@ -147,10 +234,10 @@ void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color){
     int error = tx - d;
 
     while (x >= y) {
-        drawHorizontalLine(layer,cx-y,cx+y,cy+x,color);
-        drawHorizontalLine(layer,cx-x,cx+x,cy+y,color);
-        drawHorizontalLine(layer,cx-x,cx+x,cy-y,color);
-        drawHorizontalLine(layer,cx-y,cx+y,cy-x,color);
+        drawHorizontalLine(layer, cx-y, cx+y, cy+x, color);
+        drawHorizontalLine(layer, cx-x, cx+x, cy+y, color);
+        drawHorizontalLine(layer, cx-x, cx+x, cy-y, color);
+        drawHorizontalLine(layer, cx-y, cx+y, cy-x, color);
         if (error <= 0) {
             ++y;
             error += ty;

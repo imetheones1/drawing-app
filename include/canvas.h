@@ -12,6 +12,12 @@ typedef struct Layer {
     SDL_Texture* texture;
     size_t width, height;
     bool is_changed; // True when pixels is updated and texture needs to be
+    
+    int dirty_x1;
+    int dirty_y1;
+    int dirty_x2;
+    int dirty_y2;
+    bool has_dirty_rect;
 } Layer;
 
 typedef struct Layers {
@@ -21,6 +27,11 @@ typedef struct Layers {
     Layer edit_layer;
     size_t width, height; // width & height in pixels
     SDL_Texture* canvas_buffer; // Combined buffer
+
+    SDL_Texture* below_buffer;
+    SDL_Texture* above_buffer;
+    size_t last_cur_layer;
+    bool static_layers_changed;
 } Layers;
 
 /**
