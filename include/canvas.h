@@ -53,6 +53,6 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 void fillLayer(Layer *layer, uint32_t color);
 
 // apply all lines from a lines object to a given layer
-void drawLinesToLayer(Lines *lines, Layer *layer);
+bool drawLinesToLayer(Lines *lines, Layer *layer);
 
 #endif

@@ -200,18 +200,18 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
     }
 }
 
-void drawLinesToLayer(Lines *lines, Layer *layer) {
-    if (!lines || !layer || !layer->pixels) return;
+bool drawLinesToLayer(Lines *lines, Layer *layer) {
+    if (!lines || !layer || !layer->pixels) return false;
 
-    if (lines->point_count >= 2) {
-        uint32_t brush_color = makeColor(0, 0, 0, 255);
+    if (lines->point_count < 2) return false;
 
-        for (size_t i = 0; i < lines->point_count - 1; i++) {
-            drawLineSegment(layer, lines->points[i], lines->points[i + 1], brush_color);
-        }
+    uint32_t brush_color = makeColor(0, 0, 0, 255);
 
-        layer->is_changed = true;
+    for (size_t i = 0; i < lines->point_count - 1; i++) {
+        drawLineSegment(layer, lines->points[i], lines->points[i + 1], brush_color);
     }
+
+    layer->is_changed = true;
 
     if (lines->is_drawing) {
         if (lines->point_count > 0) {
@@ -221,4 +221,6 @@ void drawLinesToLayer(Lines *lines, Layer *layer) {
     } else {
         lines->point_count = 0;
     }
+
+    return true;
 }

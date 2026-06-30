@@ -8,8 +8,25 @@
 #define CLAY_IMPLEMENTATION
 #include "Clay/clay.h"
 
+enum ButtonType {
+    BUTTON_LAYER
+};
+
+typedef struct ButtonContext {
+    enum ButtonType type;
+    AppState *state;
+} ButtonContext;
+
 void HandleClayErrors(Clay_ErrorData errorData) {
     SDL_Log("Clay error: %s", errorData.errorText.chars);
+}
+
+void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData) {
+    ButtonContext *context = (ButtonContext*)userData;
+    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+        context->state->should_redraw = true;
+        if (context->type == BUTTON_LAYER) context->state->layers->cur_layer = elementId.offset;
+    }
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
@@ -64,6 +81,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
 
     state->rendererData.renderer = state->renderer;
 
+    SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
+    Clay_SetLayoutDimensions((Clay_Dimensions) { (float)state->screen_width, (float)state->screen_height });
+
+    state->should_redraw = true;
+
     *appstate = state;
     return SDL_APP_CONTINUE;
 }
@@ -76,34 +98,22 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
             Clay_SetPointerState((Clay_Vector2){ event->button.x, event->button.y }, true);
+            state->should_redraw = true;
 
             bool ui_intercepted = false;
-
-            // todo loop over all layers instead of just this one
-            Clay_ElementData panel = Clay_GetElementData(CLAY_ID("LayerPanel"));
+            Clay_ElementIdArray over_ids = Clay_GetPointerOverIds();
+            uint32_t root_id = Clay_GetElementId(CLAY_STRING("Clay__RootContainer")).id;
             
-            if (panel.boundingBox.width > 0) {
-                if (event->button.x >= panel.boundingBox.x && event->button.x <= panel.boundingBox.x + panel.boundingBox.width &&
-                    event->button.y >= panel.boundingBox.y && event->button.y <= panel.boundingBox.y + panel.boundingBox.height) {
+            for (int i = 0; i < over_ids.length; i++) {
+                if (over_ids.internalArray[i].id != root_id) {
                     ui_intercepted = true;
-                    
-                    if (event->button.button == SDL_BUTTON_LEFT) {
-                        for (size_t i = 0; i < state->layers->layer_count; i++) {
-                            Clay_ElementData btn = Clay_GetElementData(CLAY_IDI("LayerBtn", (int)i));
-                            if (btn.boundingBox.width > 0 &&
-                                event->button.x >= btn.boundingBox.x && event->button.x <= btn.boundingBox.x + btn.boundingBox.width &&
-                                event->button.y >= btn.boundingBox.y && event->button.y <= btn.boundingBox.y + btn.boundingBox.height) {
-                                state->layers->cur_layer = i;
-                                break;
-                            }
-                        }
-                    }
+                    break;
                 }
             }
 
             switch (event->button.button) {
                 case SDL_BUTTON_LEFT: {
-                    state->mouse1=true;
+                    state->mouse1 = true;
 
                     if (ui_intercepted) break;
 
@@ -133,10 +143,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                 // drag
                 state->canvas_x += event->motion.xrel;
                 state->canvas_y += event->motion.yrel;
+                state->should_redraw = true;
             }
             else if (state->mouse2){
                 // rotate
                 state->canvas_rotation -= event->motion.xrel*0.1;
+                state->should_redraw = true;
             }
             else if (state->mouse1 && state->cur_lines->is_drawing) {
                 double canvas_x = 0;
@@ -156,7 +168,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 
             switch (event->button.button) {
                 case SDL_BUTTON_LEFT: {
-                    state->mouse1=false;
+                    state->mouse1 = false;
                     if (!state->cur_lines->is_drawing) break;
 
                     double canvas_x = 0;
@@ -182,16 +194,21 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             float mx, my;
             SDL_GetMouseState(&mx, &my);
             
+            Clay_SetPointerState((Clay_Vector2){ mx, my }, state->mouse1);
+            
             bool ui_intercepted = false;
-            Clay_ElementData panel = Clay_GetElementData(CLAY_ID("LayerPanel"));
-            if (panel.boundingBox.width > 0 &&
-                mx >= panel.boundingBox.x && mx <= panel.boundingBox.x + panel.boundingBox.width &&
-                my >= panel.boundingBox.y && my <= panel.boundingBox.y + panel.boundingBox.height) {
-                ui_intercepted = true;
+            Clay_ElementIdArray over_ids = Clay_GetPointerOverIds();
+            uint32_t root_id = Clay_GetElementId(CLAY_STRING("Clay__RootContainer")).id;
+            for (int i = 0; i < over_ids.length; i++) {
+                if (over_ids.internalArray[i].id != root_id) {
+                    ui_intercepted = true;
+                    break;
+                }
             }
 
             if (ui_intercepted) {
                 Clay_UpdateScrollContainers(true, (Clay_Vector2){ event->wheel.x, event->wheel.y * 20.0f }, 0.016f);
+                state->should_redraw = true;
                 break;
             }
 
@@ -217,31 +234,47 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
             state->canvas_x = mx - dx - (state->screen_width / 2.0);
             state->canvas_y = my - dy - (state->screen_height / 2.0);
 
+            state->should_redraw = true;
+
+            break;
+        }
+        case SDL_EVENT_WINDOW_RESIZED: {
+            // SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
+            state->screen_width  = event->window.data1;
+            state->screen_height = event->window.data2;
+            Clay_SetLayoutDimensions((Clay_Dimensions) { (float)state->screen_width, (float)state->screen_height });
+            state->should_redraw = true;
             break;
         }
     }
     return SDL_APP_CONTINUE;
 }
 
+static ButtonContext layer_button_context = {
+    .type = BUTTON_LAYER
+};
+
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
-    SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
-
-    drawLinesToLayer(state->cur_lines,&(state->layers->edit_layer));
+    if (drawLinesToLayer(state->cur_lines,&(state->layers->edit_layer))) state->should_redraw = true;
 
     if (state->is_edit_finish) {
         state->is_edit_finish = false;
         mergeLayers(&(state->layers->layers[state->layers->cur_layer]),&(state->layers->edit_layer));
         fillLayer(&(state->layers->edit_layer),0);
         state->layers->edit_layer.is_changed = true;
+        state->should_redraw = true;
     }
+
+    if (!state->should_redraw) return SDL_APP_CONTINUE;
 
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);
 
     compositeLayers(state->renderer,state->layers);
-    
+    state->should_redraw = false;
+
     double zoom_factor = SDL_pow(2,state->canvas_zoom);
     SDL_FRect canvas_dest = {
         .w = state->layers->width * zoom_factor,
@@ -251,7 +284,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     canvas_dest.y = state->canvas_y + state->screen_height/2 - canvas_dest.h/2;
     SDL_RenderTextureRotated(state->renderer, state->layers->canvas_buffer,NULL,&canvas_dest,state->canvas_rotation,NULL,SDL_FLIP_NONE);
 
-    Clay_SetLayoutDimensions((Clay_Dimensions) { (float)state->screen_width, (float)state->screen_height });
+    layer_button_context.state = state;
     
     Clay_BeginLayout();
 
@@ -303,6 +336,8 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                     },
                     .backgroundColor = is_active ? (Clay_Color){.r=80, .g=120, .b=200, .a=255} : (Clay_Color){.r=60, .g=60, .b=65, .a=255}
                 }) {
+                    Clay_OnHover(&HandleButtonInteraction, (intptr_t)(&layer_button_context));
+                    
                     CLAY((Clay_ElementDeclaration){
                         .id = CLAY_IDI("LayerPreview", (int)i),
                         .layout = {

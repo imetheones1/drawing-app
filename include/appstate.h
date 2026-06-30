@@ -39,6 +39,8 @@ typedef struct AppState {
     bool is_edit_finish;
 
     Clay_SDL3RendererData rendererData;
+
+    bool should_redraw;
 } AppState;
 
 #endif
