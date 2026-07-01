@@ -46,13 +46,15 @@ typedef struct AppState {
     bool should_redraw;
 } AppState;
 
+extern bool everything_ok;
+
 #define quitIfNull(value, errorTitle, errorFormat, formatValue) \
     if(!(value)) { \
         char _msg[512]; \
         SDL_snprintf(_msg, sizeof(_msg), errorFormat, formatValue); \
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, errorTitle, _msg, window_for_popups); \
         SDL_Quit(); \
-        exit(1); \
+        everything_ok = false; \
     }
 
 #define returnIfNull(value, errorTitle, errorFormat, formatValue) \

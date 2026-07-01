@@ -56,7 +56,13 @@ target_link_libraries(drawingapp PRIVATE SDL3::SDL3 SDL3_image::SDL3_image SDL3_
 
 if(EMSCRIPTEN)
     target_compile_options(drawingapp PRIVATE -O3)
-    target_link_options(drawingapp PRIVATE -O3)
+
+    target_link_options(drawingapp PRIVATE 
+        -O3 
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sINITIAL_MEMORY=67108864"
+        "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/shell.html" 
+    )
     
     set_target_properties(drawingapp PROPERTIES SUFFIX ".html")
 else()

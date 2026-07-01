@@ -11,6 +11,8 @@
 
 #define CLAY_PANEL_Z_INDEX 20
 
+bool everything_ok = true;
+
 enum ButtonType {
     BUTTON_LAYER,
     BUTTON_TOOL
@@ -200,6 +202,7 @@ void CLAY_TEXTBOX(TextboxState* tb, Clay_ElementId id) {
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
+    if (!everything_ok) return SDL_APP_FAILURE;
     AppState* state = (AppState*)appstate;
     switch (event->type) {
         case SDL_EVENT_QUIT: {
