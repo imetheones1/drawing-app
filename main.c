@@ -91,6 +91,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->cur_lines->point_capacity = 10;
     state->cur_lines->points = SDL_calloc(state->cur_lines->point_capacity,sizeof(SDL_FPoint));
     state->cur_lines->point_count = 0;
+    state->cur_lines->drawn_point_count = 0;
     state->cur_lines->is_drawing = false;
 
     state->canvas_zoom = 0;
@@ -288,7 +289,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                 double canvas_y = 0;
                 screenToCanvas(state,event->motion.x,event->motion.y,&canvas_x,&canvas_y);
 
-                if (state->cur_lines->point_count>=state->cur_lines->point_capacity) break;
+                if (state->cur_lines->point_count >= state->cur_lines->point_capacity) {
+                    state->cur_lines->point_capacity *= 2;
+                    state->cur_lines->points = SDL_realloc(state->cur_lines->points, state->cur_lines->point_capacity * sizeof(SDL_FPoint));
+                }
                 state->cur_lines->points[state->cur_lines->point_count++] = (SDL_FPoint){
                     .x = canvas_x,
                     .y = canvas_y
@@ -308,7 +312,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                     double canvas_y = 0;
                     screenToCanvas(state,event->button.x,event->button.y,&canvas_x,&canvas_y);
 
-                    if (state->cur_lines->point_count>=state->cur_lines->point_capacity) break;
+                    if (state->cur_lines->point_count >= state->cur_lines->point_capacity) {
+                        state->cur_lines->point_capacity *= 2;
+                        state->cur_lines->points = SDL_realloc(state->cur_lines->points, state->cur_lines->point_capacity * sizeof(SDL_FPoint));
+                    }
                     state->cur_lines->points[state->cur_lines->point_count++] = (SDL_FPoint){
                         .x = canvas_x,
                         .y = canvas_y
@@ -439,6 +446,18 @@ static TextboxState tool_radius_textbox = {
     .is_focused = false 
 };
 
+static TextboxState tool_softness_textbox = { 
+    .text = "0.5", 
+    .length = 3, 
+    .is_focused = false 
+};
+
+static TextboxState tool_spacing_textbox = { 
+    .text = "0.5",
+    .length = 3, 
+    .is_focused = false 
+};
+
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
@@ -446,16 +465,25 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         case TOOL_PEN: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
             state->layers->current_tool_radius = SDL_max(1, SDL_atof(tool_radius_textbox.text));
+            state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
             break;
         }
         case TOOL_ERASER: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
             state->layers->current_tool_radius = SDL_max(1, SDL_atof(tool_radius_textbox.text));
+            state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
             break;
         }
     }
+    
 
-    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer),state->layers->current_color,state->layers->current_tool_radius)) state->should_redraw = true;
+    state->layers->current_stamp = updateToolStamp(state->layers->current_stamp, state->layers->current_tool_radius, state->layers->current_tool_softness);
+    
+    float current_spacing = SDL_max(0.01f, (float)SDL_atof(tool_spacing_textbox.text));
+
+    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer), state->layers->current_color, state->layers->current_stamp, current_spacing)) {
+        state->should_redraw = true;
+    }
 
     if (state->is_edit_finish) {
         state->is_edit_finish = false;
@@ -683,6 +711,12 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     }) {
         CLAY_TEXT(CLAY_STRING("Radius:"), &tool_button_text_config); 
         CLAY_TEXTBOX(&tool_radius_textbox, CLAY_ID("RadiusTextbox"));
+
+        CLAY_TEXT(CLAY_STRING("Softness:"), &tool_button_text_config); 
+        CLAY_TEXTBOX(&tool_softness_textbox, CLAY_ID("SoftnessTextbox"));
+
+        CLAY_TEXT(CLAY_STRING("Spacing:"), &tool_button_text_config); 
+        CLAY_TEXTBOX(&tool_spacing_textbox, CLAY_ID("SpacingTextbox"));
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();

@@ -15,6 +15,16 @@ typedef enum ToolType {
     TOOL_COUNT // do not use as a tool
 } ToolType;
 
+typedef struct ToolStamp {
+    uint8_t *stamp; // array of opacities
+    size_t width;
+    size_t height;
+    int radius;
+    float softness;
+} ToolStamp;
+
+ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness);
+
 typedef struct Layer {
     uint32_t* pixels; // RGBA8888
     SDL_Texture* texture;
@@ -45,6 +55,8 @@ typedef struct Layers {
     ToolType current_tool;
     uint32_t current_color;
     float current_tool_radius;
+    float current_tool_softness;
+    ToolStamp* current_stamp;
 } Layers;
 
 /**
@@ -79,6 +91,6 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 void fillLayer(Layer *layer, uint32_t color);
 
 // apply all lines from a lines object to a given layer
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius);
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, ToolStamp *stamp, float spacing);
 
 #endif

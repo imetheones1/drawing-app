@@ -300,32 +300,31 @@ static void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color
     }
 }
 
-// stamp logic
-
-typedef struct ToolStamp {
-    uint8_t *stamp; // array of opacities
-    size_t width;
-    size_t height;
-
-    int radius;
-    float softness;
-} ToolStamp;
-
 static inline uint8_t getBrushOpacity(float distance, float radius, float softness) {
     if (distance >= radius) return 0;
-    if (softness >= 1.0f) softness = 0.99f;
+    if (softness <= 0.0f) softness = 0.01f;
 
-    float x = 1.0f - (distance / radius);
+    float solid_radius = radius * (1.0f - softness);
+    if (distance <= solid_radius) return 255;
 
-    float x_adj = SDL_clamp((x - softness) / (1.0f - softness), 0.0f, 1.0f);
-
-    float opacity_float = x_adj * x_adj * (3.0f - 2.0f * x_adj);
+    float transition_range = radius - solid_radius;
+    float x = 1.0f - ((distance - solid_radius) / transition_range);
+    float opacity_float = x * x * (3.0f - 2.0f * x);
 
     return (uint8_t)(opacity_float * 255.0f);
 }
 
-static ToolStamp* generateToolStamp(int radius, float softness) {
-    ToolStamp* stamp_ptr = (ToolStamp*)malloc(sizeof(ToolStamp));
+ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness) {
+    if (old_stamp && old_stamp->radius == radius && old_stamp->softness == softness) {
+        return old_stamp;
+    }
+
+    if (old_stamp) {
+        SDL_free(old_stamp->stamp);
+        SDL_free(old_stamp);
+    }
+
+    ToolStamp* stamp_ptr = (ToolStamp*)SDL_malloc(sizeof(ToolStamp));
     if (!stamp_ptr) return NULL;
 
     size_t dim = (size_t)(radius * 2 + 1);
@@ -340,86 +339,162 @@ static ToolStamp* generateToolStamp(int radius, float softness) {
         return NULL;
     }
 
-    int center = radius; 
     float f_radius = (float)radius;
-
-    for (int y = 0; y <= radius; y++) {
-        for (int x = 0; x <= radius; x++) {
-            
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
             float dist = SDL_sqrtf((float)(x * x + y * y));
-
-            if (dist >= f_radius) break;
-
             uint8_t opacity = getBrushOpacity(dist, f_radius, softness);
-
-            if (opacity > 0) {
-                stamp_ptr->stamp[(center + y) * dim + (center + x)] = opacity;
-                stamp_ptr->stamp[(center + y) * dim + (center - x)] = opacity;
-                stamp_ptr->stamp[(center - y) * dim + (center + x)] = opacity;
-                stamp_ptr->stamp[(center - y) * dim + (center - x)] = opacity;
-            }
+            stamp_ptr->stamp[(y + radius) * dim + (x + radius)] = opacity;
         }
     }
-
     return stamp_ptr;
 }
 
+static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStamp *stamp) {
+    if (!stamp) return;
 
-static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, float radius) {
-    int x0 = (int)SDL_roundf(p1.x);
-    int y0 = (int)SDL_roundf(p1.y);
-    int x1 = (int)SDL_roundf(p2.x);
-    int y1 = (int)SDL_roundf(p2.y);
+    const int r = stamp->radius;
+    const int dim = (int)stamp->width;
 
-    int dx = SDL_abs(x1 - x0);
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = -SDL_abs(y1 - y0);
-    int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
-    int e2;
+    int ix = (int)SDL_floorf(cx);
+    int iy = (int)SDL_floorf(cy);
 
-    while (true) {
-        if (x0 >= 0 && x0 < (int)layer->width && y0 >= 0 && y0 < (int)layer->height) {
-            
-            // brush logic here
+    float fx = cx - ix;
+    float fy = cy - iy;
 
-            // layer->pixels[y0 * layer->width + x0] = color;
-            drawFilledCircle(layer,x0,y0,radius,color);
-        }
+    int wx = (int)(fx * 256.0f);
+    int wy = (int)(fy * 256.0f);
 
-        if (x0 == x1 && y0 == y1) break;
-        
-        e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
+    int ix0 = 256 - wx;
+    int iy0 = 256 - wy;
+
+    int start_x = ix - r;
+    int start_y = iy - r;
+
+    int x1 = SDL_max(0, start_x);
+    int y1 = SDL_max(0, start_y);
+    int x2 = SDL_min((int)layer->width - 1,  start_x + dim - 2);
+    int y2 = SDL_min((int)layer->height - 1, start_y + dim - 2);
+
+    if (x1 <= x2 && y1 <= y2) {
+        expandDirtyRect(layer, x1, y1);
+        expandDirtyRect(layer, x2, y2);
+    }
+
+    uint8_t cr = color >> 24;
+    uint8_t cg = color >> 16;
+    uint8_t cb = color >> 8;
+    uint8_t ca = color;
+
+    for (int y = y1; y <= y2; y++) {
+
+        int sy = y - start_y;
+
+        const uint8_t *row0 = stamp->stamp + sy * dim;
+        const uint8_t *row1 = row0 + dim;
+
+        for (int x = x1; x <= x2; x++) {
+
+            int sx = x - start_x;
+
+            uint32_t a00 = row0[sx];
+            uint32_t a10 = row0[sx + 1];
+            uint32_t a01 = row1[sx];
+            uint32_t a11 = row1[sx + 1];
+
+            uint32_t top =
+                a00 * ix0 +
+                a10 * wx;
+
+            uint32_t bot =
+                a01 * ix0 +
+                a11 * wx;
+
+            uint32_t stamp_alpha =
+                (top * iy0 + bot * wy) >> 16;
+
+            if (!stamp_alpha)
+                continue;
+
+            stamp_alpha = (stamp_alpha * ca) >> 8;
+
+            int idx = y * layer->width + x;
+
+            uint32_t dst = layer->pixels[idx];
+            uint32_t da = dst & 255;
+
+            da += stamp_alpha;
+            if (da > 255)
+                da = 255;
+
+            layer->pixels[idx] = makeColor(cr, cg, cb, da);
         }
     }
 }
 
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius) {
-    if (!lines || !layer || !layer->pixels) return false;
+static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, ToolStamp *stamp, float spacing, float *remainder_dist) {
+    float dx = p2.x - p1.x;
+    float dy = p2.y - p1.y;
+    float dist = SDL_sqrtf(dx * dx + dy * dy);
+    
+    float step_dist = spacing * stamp->radius;
+    if (step_dist < 0.1f) step_dist = 0.1f;
 
-    if (lines->point_count < 2) return false;
+    if (dist == 0.0f) return;
 
+    float dir_x = dx / dist;
+    float dir_y = dy / dist;
+    float current_dist = *remainder_dist;
+    
+    while (current_dist <= dist) {
+        float cx = p1.x + dir_x * current_dist;
+        float cy = p1.y + dir_y * current_dist;
+        
+        if (cx >= -stamp->radius && cx < layer->width + stamp->radius && 
+            cy >= -stamp->radius && cy < layer->height + stamp->radius) {
+            drawStamp(layer, cx, cy, color, stamp);
+        }
+        
+        current_dist += step_dist;
+    }
+    
+    *remainder_dist = current_dist - dist;
+}
 
-    for (size_t i = 0; i < lines->point_count - 1; i++) {
-        drawLineSegment(layer, lines->points[i], lines->points[i + 1], color, radius);
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, ToolStamp *stamp, float spacing) {
+    if (!lines || !layer || !layer->pixels || !stamp) return false;
+    if (lines->point_count == 0) return false;
+
+    if (lines->drawn_point_count == 0) {
+        // int cx = (int)SDL_roundf(lines->points[0].x);
+        // int cy = (int)SDL_roundf(lines->points[0].y);
+        drawStamp(layer, lines->points[0].x, lines->points[0].y, color, stamp);
+        
+        float step_dist = spacing * stamp->radius;
+        lines->remainder_dist = (step_dist < 0.1f) ? 0.1f : step_dist;
+        lines->drawn_point_count = 1;
+        layer->is_changed = true;
+    }
+
+    if (lines->drawn_point_count >= lines->point_count) {
+        if (!lines->is_drawing && lines->point_count > 0) {
+            lines->point_count = 0;
+            lines->drawn_point_count = 0;
+        }
+        return layer->is_changed;
+    }
+
+    size_t start_idx = lines->drawn_point_count - 1;
+    for (size_t i = start_idx; i < lines->point_count - 1; i++) {
+        drawLineSegment(layer, lines->points[i], lines->points[i + 1], color, stamp, spacing, &lines->remainder_dist);
     }
 
     layer->is_changed = true;
+    lines->drawn_point_count = lines->point_count;
 
-    if (lines->is_drawing) {
-        if (lines->point_count > 0) {
-            lines->points[0] = lines->points[lines->point_count - 1];
-            lines->point_count = 1;
-        }
-    } else {
+    if (!lines->is_drawing) {
         lines->point_count = 0;
+        lines->drawn_point_count = 0;
     }
 
     return true;
