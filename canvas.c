@@ -369,8 +369,8 @@ static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStam
     const float r = stamp->radius;
     const int dim = (int)stamp->width;
 
-    float offset_x = (float)r - cx;
-    float offset_y = (float)r - cy;
+    float offset_x = r - cx + 0.5f;
+    float offset_y = r - cy + 0.5f;
     
     int base_iu = (int)SDL_floorf(offset_x);
     int base_iv = (int)SDL_floorf(offset_y);
