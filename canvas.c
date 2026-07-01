@@ -305,16 +305,26 @@ static inline uint8_t getBrushOpacity(float distance, float radius, float softne
     if (softness <= 0.0001f) return 255;
 
     float solid_radius = radius * (1.0f - softness);
-    if (distance <= solid_radius) return 255;
+    float opacity_float = 1.0f;
 
-    float transition_range = radius - solid_radius;
-    float x = 1.0f - ((distance - solid_radius) / transition_range);
-    float opacity_float = x * x * (3.0f - 2.0f * x);
+    if (distance > solid_radius) {
+        float transition_range = radius - solid_radius;
+        float x = 1.0f - ((distance - solid_radius) / transition_range);
+        opacity_float = x * x * (3.0f - 2.0f * x);
+    }
+
+    if (distance == 0.0f && radius < 1.0f) {
+        opacity_float *= (1.0f - softness * (1.0f - radius));
+    }
 
     return (uint8_t)(opacity_float * 255.0f);
 }
 
-ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness) {
+ToolStamp* updateToolStamp(ToolStamp* old_stamp, float radius, float softness) {
+    if (radius < 0.5f) {
+        radius = 0.5f;
+    }
+
     if (old_stamp && old_stamp->radius == radius && old_stamp->softness == softness) {
         return old_stamp;
     }
@@ -327,7 +337,9 @@ ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness) {
     ToolStamp* stamp_ptr = (ToolStamp*)SDL_malloc(sizeof(ToolStamp));
     if (!stamp_ptr) return NULL;
 
-    size_t dim = (size_t)(radius * 2 + 1);
+    int r_ceil = (int)SDL_ceilf(radius);
+    size_t dim = (size_t)(r_ceil * 2 + 1);
+    
     stamp_ptr->width = dim;
     stamp_ptr->height = dim;
     stamp_ptr->radius = radius;
@@ -339,21 +351,22 @@ ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness) {
         return NULL;
     }
 
-    float f_radius = (float)radius;
-    for (int y = -radius; y <= radius; y++) {
-        for (int x = -radius; x <= radius; x++) {
+    for (int y = -r_ceil; y <= r_ceil; y++) {
+        for (int x = -r_ceil; x <= r_ceil; x++) {
             float dist = SDL_sqrtf((float)(x * x + y * y));
-            uint8_t opacity = getBrushOpacity(dist, f_radius, softness);
-            stamp_ptr->stamp[(y + radius) * dim + (x + radius)] = opacity;
+            uint8_t opacity = getBrushOpacity(dist, radius, softness);
+            
+            stamp_ptr->stamp[(y + r_ceil) * dim + (x + r_ceil)] = opacity;
         }
     }
+    
     return stamp_ptr;
 }
 
 static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStamp *stamp) {
     if (!stamp) return;
 
-    const int r = stamp->radius;
+    const float r = stamp->radius;
     const int dim = (int)stamp->width;
 
     float offset_x = (float)r - cx;
@@ -419,7 +432,7 @@ static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStam
             stamp_alpha = (stamp_alpha * ca) >> 8;
 
             if (stamp->softness <= 0.0001f) {
-                stamp_alpha = (stamp_alpha > 127) ? 255 : 0;
+                stamp_alpha = (stamp_alpha > 50) ? 255 : 0;
                 if (!stamp_alpha) continue; 
             }
 

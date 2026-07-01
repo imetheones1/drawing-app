@@ -19,11 +19,11 @@ typedef struct ToolStamp {
     uint8_t *stamp; // array of opacities
     size_t width;
     size_t height;
-    int radius;
+    float radius;
     float softness;
 } ToolStamp;
 
-ToolStamp* updateToolStamp(ToolStamp* old_stamp, int radius, float softness);
+ToolStamp* updateToolStamp(ToolStamp* old_stamp, float radius, float softness);
 
 typedef struct Layer {
     uint32_t* pixels; // RGBA8888
