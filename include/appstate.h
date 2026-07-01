@@ -17,9 +17,9 @@ typedef struct Lines {
     size_t point_count;
     size_t point_capacity;
     size_t drawn_point_count;
+    size_t processed_point_count;
     bool is_drawing;
     float remainder_dist;
-    float carry_distance;
 } Lines;
 
 typedef struct AppState {
