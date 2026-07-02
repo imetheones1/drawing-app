@@ -87,6 +87,72 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
     }
 }
 
+static SliderState alpha_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState red_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState green_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState blue_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+
+SDL_Texture* CreateGradientTexture(SDL_Renderer* renderer, int width, int height, int color_channel) {
+    if (width <= 0 || height <= 0) return NULL;
+
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, width, height);
+
+    if (!texture) {
+        SDL_Log("Failed to create texture: %s", SDL_GetError());
+        return NULL;
+    }
+
+    int pitch = width * 4; 
+    uint32_t* pixels = SDL_malloc(pitch * height);
+    if (!pixels) {
+        SDL_Log("Failed to allocate texture buffer: %s", SDL_GetError());
+        SDL_DestroyTexture(texture);
+        return NULL;
+    }
+
+    uint32_t* first_row = pixels;
+    for (int x = 0; x < width; x++) {
+        uint8_t intensity = (x * 255) / (width - 1);
+        
+        first_row[x] = makeColor(
+            (color_channel==0) ? intensity : 0xFF,
+            (color_channel==1) ? intensity : 0xFF,
+            (color_channel==2) ? intensity : 0xFF,
+            0xFF
+        );
+    }
+
+    for (int y = 1; y < height; y++) {
+        SDL_memcpy(pixels + (y * width), first_row, pitch);
+    }
+
+    if (!SDL_UpdateTexture(texture, NULL, pixels, pitch)) {
+        SDL_Log("Failed to update texture: %s", SDL_GetError());
+        SDL_DestroyTexture(texture);
+        texture = NULL;
+    }
+
+    SDL_free(pixels);
+
+    return texture;
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     SDL_Log("initialization started");
     AppState *state = SDL_calloc(1,sizeof(AppState));
@@ -181,6 +247,20 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->cur_g = 0;
     state->cur_b = 0;
 
+    red_slider_state.background = CreateGradientTexture(state->renderer,150,30,0);
+    green_slider_state.background = CreateGradientTexture(state->renderer,150,30,1);
+    blue_slider_state.background = CreateGradientTexture(state->renderer,150,30,2);
+
+    if (!SDL_SetTextureColorMod(red_slider_state.background,255,0,0)) {
+        SDL_Log("Texture modulation failed: %s",SDL_GetError());
+    }
+    if (!SDL_SetTextureColorMod(green_slider_state.background,0,255,0)) {
+        SDL_Log("Texture modulation failed: %s",SDL_GetError());
+    }
+    if (!SDL_SetTextureColorMod(blue_slider_state.background,0,0,255)) {
+        SDL_Log("Texture modulation failed: %s",SDL_GetError());
+    }
+
     state->should_redraw = true;
 
     *appstate = state;
@@ -239,27 +319,6 @@ void CLAY_TEXTBOX(TextboxState* tb, Clay_ElementId id) {
     }
 }
 
-static SliderState alpha_slider_state = {
-    .background = NULL,
-    .min_val = 0,
-    .max_val = 255
-};
-static SliderState red_slider_state = {
-    .background = NULL,
-    .min_val = 0,
-    .max_val = 255
-};
-static SliderState green_slider_state = {
-    .background = NULL,
-    .min_val = 0,
-    .max_val = 255
-};
-static SliderState blue_slider_state = {
-    .background = NULL,
-    .min_val = 0,
-    .max_val = 255
-};
-
 void CLAY_SLIDER(SliderState* slider, Clay_ElementId id) {
     float percentage = 0.0f;
     if (slider->max_val > slider->min_val) {
@@ -275,7 +334,7 @@ void CLAY_SLIDER(SliderState* slider, Clay_ElementId id) {
         .id = id,
         .layout = {
             .sizing = {
-                .width = CLAY_SIZING_GROW(),
+                .width = CLAY_SIZING_FIXED(150),
                 .height = CLAY_SIZING_FIXED(30)
             },
             .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -605,9 +664,13 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     switch (state->layers->current_tool) {
         case TOOL_PEN:
         case TOOL_ERASER: {
-            state->layers->current_color = makeColor(state->cur_r, state->cur_g, state->cur_b, state->cur_opacity);
+            state->layers->current_color = makeColor(state->cur_r+0.5, state->cur_g+0.5, state->cur_b+0.5, state->cur_opacity+0.5);
             state->layers->current_tool_radius = SDL_max(0.5, SDL_atof(tool_radius_textbox.text));
             state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
+            break;
+        }
+        default: {
+            SDL_Log("UNHANDLED TOOL: %d",state->layers->current_tool);
             break;
         }
     }
@@ -865,7 +928,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         },
         .layout = {
             .sizing = {
-                .width = CLAY_SIZING_FIXED(200),
+                // .width = CLAY_SIZING_FIXED(200),
                 // .height = CLAY_SIZING_FIXED(100),
             },
             .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -900,6 +963,16 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         COLOR_PICKER_NUMERICAL("blue",blue_slider_state,&state->cur_b,"B");
         COLOR_PICKER_NUMERICAL("alpha",alpha_slider_state,&state->cur_opacity,"Alpha");
         #undef COLOR_PICKER_NUMERICAL
+
+        if (!SDL_SetTextureColorMod(red_slider_state.background,255,state->cur_g,state->cur_b)) {
+            SDL_Log("Texture modulation failed: %s",SDL_GetError());
+        }
+        if (!SDL_SetTextureColorMod(green_slider_state.background,state->cur_r,255,state->cur_b)) {
+            SDL_Log("Texture modulation failed: %s",SDL_GetError());
+        }
+        if (!SDL_SetTextureColorMod(blue_slider_state.background,state->cur_r,state->cur_g,255)) {
+            SDL_Log("Texture modulation failed: %s",SDL_GetError());
+        }
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
