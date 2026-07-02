@@ -465,12 +465,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
 
     switch (state->layers->current_tool) {
-        case TOOL_PEN: {
-            state->layers->current_color = makeColor(0, 0, 0, 255);
-            state->layers->current_tool_radius = SDL_max(0.5, SDL_atof(tool_radius_textbox.text));
-            state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
-            break;
-        }
+        case TOOL_PEN:
         case TOOL_ERASER: {
             state->layers->current_color = makeColor(0, 0, 0, 255);
             state->layers->current_tool_radius = SDL_max(0.5, SDL_atof(tool_radius_textbox.text));
@@ -479,12 +474,9 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         }
     }
     
-
-    state->layers->current_stamp = updateToolStamp(state->layers->current_stamp, state->layers->current_tool_radius, state->layers->current_tool_softness);
-    
     float current_spacing = SDL_max(0.01f, (float)SDL_atof(tool_spacing_textbox.text));
-
-    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer), state->layers->current_color, state->layers->current_stamp, current_spacing)) {
+    
+    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer), state->layers->current_color, state->layers->current_tool_radius, state->layers->current_tool_softness, current_spacing)) {
         state->should_redraw = true;
     }
 

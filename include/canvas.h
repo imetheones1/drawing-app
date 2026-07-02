@@ -56,7 +56,6 @@ typedef struct Layers {
     uint32_t current_color;
     float current_tool_radius;
     float current_tool_softness;
-    ToolStamp* current_stamp;
 } Layers;
 
 /**
@@ -77,7 +76,7 @@ void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), voi
 // apply all information from src to dest
 void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite, const bool is_eraser);
 
-#define isInsideRectangle(x,y,rx,ry,rw,rh) (x>=rx&&x<rx+rw&&y>=ry&&y<ry+rh)
+#define isInsideRectangle(x,y,rx,ry,rw,rh) ((x)>=(rx)&&(x)<((rx)+(rw))&&(y)>=(ry)&&(y)<((ry)+(rh)))
 
 // drawing functions
 
@@ -91,6 +90,6 @@ void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* o
 void fillLayer(Layer *layer, uint32_t color);
 
 // apply all lines from a lines object to a given layer
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, ToolStamp *stamp, float spacing);
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius, float softness, float spacing);
 
 #endif

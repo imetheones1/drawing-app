@@ -2,6 +2,8 @@
 #include "include/appstate.h"
 #include "include/canvas.h"
 
+#define EPSILON 0.001f
+
 SDL_Window* window_for_popups;
 
 static void expandDirtyRect(Layer* layer, int x, int y) {
@@ -302,7 +304,7 @@ static void drawFilledCircle(Layer *layer, int cx, int cy, int r, uint32_t color
 
 static inline uint8_t getBrushOpacity(float distance, float radius, float softness) {
     if (distance >= radius) return 0;
-    if (softness <= 0.0001f) return 255;
+    if (softness <= EPSILON) return 255;
 
     float solid_radius = radius * (1.0f - softness);
     float opacity_float = 1.0f;
@@ -363,8 +365,67 @@ ToolStamp* updateToolStamp(ToolStamp* old_stamp, float radius, float softness) {
     return stamp_ptr;
 }
 
+static void drawAliasedCapsule(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, float radius, uint32_t color) {
+    int x1 = SDL_floorf(SDL_min(p1.x, p2.x) - radius);
+    int y1 = SDL_floorf(SDL_min(p1.y, p2.y) - radius);
+    int x2 = SDL_ceilf(SDL_max(p1.x, p2.x) + radius);
+    int y2 = SDL_ceilf(SDL_max(p1.y, p2.y) + radius);
+
+    x1 = SDL_max(0, x1);
+    y1 = SDL_max(0, y1);
+    x2 = SDL_min((int)layer->width - 1, x2);
+    y2 = SDL_min((int)layer->height - 1, y2);
+
+    if (x1 > x2 || y1 > y2) return;
+
+    expandDirtyRect(layer, x1, y1);
+    expandDirtyRect(layer, x2, y2);
+
+    float dx = p2.x - p1.x;
+    float dy = p2.y - p1.y;
+    float l2 = dx * dx + dy * dy;
+    float inv_l2 = (l2 > 0.0f) ? (1.0f / l2) : 0.0f;
+    float r2 = radius * radius;
+
+    for (int y = y1; y <= y2; y++) {
+        for (int x = x1; x <= x2; x++) {
+            float px = (float)x + 0.5f;
+            float py = (float)y + 0.5f;
+
+            float dist2;
+            if (l2 == 0.0f) {
+                float adx = px - p1.x;
+                float ady = py - p1.y;
+                dist2 = adx * adx + ady * ady;
+            } else {
+                float t = ((px - p1.x) * dx + (py - p1.y) * dy) * inv_l2;
+                
+                if (t < 0.0f) t = 0.0f;
+                else if (t > 1.0f) t = 1.0f;
+                
+                float proj_x = p1.x + t * dx;
+                float proj_y = p1.y + t * dy;
+                
+                float adx = px - proj_x;
+                float ady = py - proj_y;
+                dist2 = adx * adx + ady * ady;
+            }
+
+            if (dist2 <= r2) {
+                layer->pixels[y * layer->width + x] = color;
+            }
+        }
+    }
+}
+
+static float last_radius = 2;
+
 static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStamp *stamp) {
-    if (!stamp) return;
+    if (!stamp) {
+        SDL_FPoint p = {cx, cy};
+        drawAliasedCapsule(layer, p, p, last_radius, color);
+        return;
+    };
 
     const float r = stamp->radius;
     const int dim = (int)stamp->width;
@@ -431,7 +492,7 @@ static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStam
 
             stamp_alpha = (stamp_alpha * ca) >> 8;
 
-            if (stamp->softness <= 0.0001f) {
+            if (stamp->softness <= EPSILON) {
                 stamp_alpha = (stamp_alpha > 50) ? 255 : 0;
                 if (!stamp_alpha) continue; 
             }
@@ -449,11 +510,19 @@ static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStam
 }
 
 static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t color, ToolStamp *stamp, float spacing, float *remainder_dist) {
+    if (!stamp) {
+        drawAliasedCapsule(layer, p1, p2, last_radius, color);
+        *remainder_dist = 0.0f;
+        return;
+    }
+
     float dx = p2.x - p1.x;
     float dy = p2.y - p1.y;
     float dist = SDL_sqrtf(dx * dx + dy * dy);
     
-    float step_dist = spacing * stamp->radius;
+    float radius = stamp->radius;
+
+    float step_dist = spacing * radius;
     if (step_dist < 0.1f) step_dist = 0.1f;
 
     if (dist == 0.0f) return;
@@ -467,8 +536,7 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
         float cx = p1.x + dx * t;
         float cy = p1.y + dy * t;
         
-        if (cx >= -stamp->radius && cx < layer->width + stamp->radius && 
-            cy >= -stamp->radius && cy < layer->height + stamp->radius) {
+        if (isInsideRectangle(cx,cy,-radius,-radius,layer->width + radius,layer->height + radius)) {
             drawStamp(layer, cx, cy, color, stamp);
         }
         
@@ -479,13 +547,49 @@ static void drawLineSegment(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, uint32_t
     *remainder_dist = current_dist - dist;
 }
 
-bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, ToolStamp *stamp, float spacing) {
-    if (!lines || !layer || !layer->pixels || !stamp || lines->point_count == 0) return false;
+#define STAMP_CACHE_SIZE 5
+static ToolStamp* stamp_cache[STAMP_CACHE_SIZE] = {NULL};
+static int stamp_cache_idx = 0;
+
+static ToolStamp* getCachedStamp(float radius, float softness) {
+    for (int i = 0; i < STAMP_CACHE_SIZE; i++) {
+        if (stamp_cache[i] != NULL) {
+            if (SDL_fabsf(stamp_cache[i]->radius - radius) < EPSILON &&
+                SDL_fabsf(stamp_cache[i]->softness - softness) < EPSILON) {
+                return stamp_cache[i];
+            }
+        }
+    }
+    
+    ToolStamp* new_stamp = updateToolStamp(NULL, radius, softness);
+    if (!new_stamp) return NULL;
+
+    if (stamp_cache[stamp_cache_idx] != NULL) {
+        SDL_free(stamp_cache[stamp_cache_idx]->stamp);
+        SDL_free(stamp_cache[stamp_cache_idx]);
+    }
+    
+    stamp_cache[stamp_cache_idx] = new_stamp;
+    stamp_cache_idx = (stamp_cache_idx + 1) % STAMP_CACHE_SIZE;
+    
+    SDL_Log("Created new toolstamp with radius %f and softness %f",radius,softness);
+
+    return new_stamp;
+}
+
+bool drawLinesToLayer(Lines *lines, Layer *layer, uint32_t color, float radius, float softness, float spacing) {
+    last_radius = radius;
+    const bool is_aliased = softness<=EPSILON;
+
+    ToolStamp *stamp = NULL;
+    if (!is_aliased) stamp = getCachedStamp(radius, softness);
+    
+    if (!lines || !layer || !layer->pixels || lines->point_count == 0) return false;
 
     if (lines->drawn_point_count == 0) {
         drawStamp(layer, lines->points[0].x, lines->points[0].y, color, stamp);
         
-        float step_dist = spacing * stamp->radius;
+        float step_dist = spacing * radius;
         lines->remainder_dist = (step_dist < 0.1f) ? 0.1f : step_dist;
         lines->drawn_point_count = 1;
         lines->processed_point_count = 1;
