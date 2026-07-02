@@ -9,6 +9,10 @@
 #define CLAY_IMPLEMENTATION
 #include "Clay/clay.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #define CLAY_PANEL_Z_INDEX 20
 
 bool everything_ok = true;
@@ -375,6 +379,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                             tb->is_focused = true;
                             clicked_textbox = true;
                             SDL_StartTextInput(state->window);
+                            
+                            #ifdef __EMSCRIPTEN__
+                            MAIN_THREAD_EM_ASM({
+                                var input = document.getElementById('mobile-keyboard-helper');
+                                if (input) {
+                                    input.value = ''; 
+                                    input.focus();
+                                }
+                            });
+                            #endif
+                            
                             state->should_redraw = true;
                         } else if (tb->is_focused) {
                             tb->is_focused = false;
@@ -383,6 +398,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                     }
                     if (!clicked_textbox) {
                         SDL_StopTextInput(state->window);
+                        
+                        #ifdef __EMSCRIPTEN__
+                        MAIN_THREAD_EM_ASM({
+                            var input = document.getElementById('mobile-keyboard-helper');
+                            if (input) { 
+                                input.blur(); 
+                            }
+                            var canvas = document.getElementById('canvas');
+                            if (canvas) {
+                                canvas.focus();
+                            }
+                        });
+                        #endif
                     }
 
                     if (ui_intercepted) break;
