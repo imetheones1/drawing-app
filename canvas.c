@@ -6,6 +6,20 @@
 
 SDL_Window* window_for_popups;
 
+uint32_t HSVtoRGB(float h, float s, float v) {
+    float c = v * s;
+    float x = c * (1 - SDL_fabsf(SDL_fmodf(h / 60.0f, 2) - 1));
+    float m = v - c;
+    float r = 0, g = 0, b = 0;
+    if (h >= 0 && h < 60) { r = c; g = x; b = 0; }
+    else if (h >= 60 && h < 120) { r = x; g = c; b = 0; }
+    else if (h >= 120 && h < 180) { r = 0; g = c; b = x; }
+    else if (h >= 180 && h < 240) { r = 0; g = x; b = c; }
+    else if (h >= 240 && h < 300) { r = x; g = 0; b = c; }
+    else if (h >= 300 && h <= 360) { r = c; g = 0; b = x; }
+    return makeColor((uint8_t)((r+m)*255), (uint8_t)((g+m)*255), (uint8_t)((b+m)*255), 255);
+}
+
 static void expandDirtyRect(Layer* layer, int x, int y) {
     if (!layer->has_dirty_rect) {
         layer->dirty_x1 = x;
@@ -56,21 +70,29 @@ static void drawLayerToRenderer(SDL_Renderer* renderer, Layer* cur_layer) {
 
 SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers) {
     if (!layers->canvas_buffer) {
+        SDL_BlendMode premul_mode = SDL_ComposeCustomBlendMode(
+            SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+            SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD
+        );
+
         layers->canvas_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
         quitIfNull(layers->canvas_buffer,"Texture allocation error","Failed to create texture for canvas buffer: %s",SDL_GetError());
         SDL_SetTextureScaleMode(layers->canvas_buffer, SDL_SCALEMODE_NEAREST);
 
         layers->below_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
         quitIfNull(layers->below_buffer,"Texture allocation error","Failed to create texture for canvas below buffer: %s",SDL_GetError());
-        SDL_SetTextureBlendMode(layers->below_buffer, SDL_BLENDMODE_BLEND);
+        // 2. Apply premultiplied blend mode here
+        SDL_SetTextureBlendMode(layers->below_buffer, premul_mode);
 
         layers->above_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
         quitIfNull(layers->above_buffer,"Texture allocation error","Failed to create texture for canvas above buffer: %s",SDL_GetError());
-        SDL_SetTextureBlendMode(layers->above_buffer, SDL_BLENDMODE_BLEND);
+        // 3. Apply premultiplied blend mode here
+        SDL_SetTextureBlendMode(layers->above_buffer, premul_mode);
         
         layers->active_layer_buffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, layers->width, layers->height);
         quitIfNull(layers->active_layer_buffer,"Texture allocation error","Failed to create texture for canvas active layer buffer: %s",SDL_GetError());
-        SDL_SetTextureBlendMode(layers->active_layer_buffer, SDL_BLENDMODE_BLEND);
+        // 4. Apply premultiplied blend mode here
+        SDL_SetTextureBlendMode(layers->active_layer_buffer, premul_mode);
 
         layers->last_cur_layer = (size_t)-1;
         layers->static_layers_changed = true;
@@ -208,13 +230,20 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool ove
             uint32_t db = (dp >> 8) & 0xFF;
 
             uint32_t inv_sa = 255 - sa;
+            
+            uint32_t out_a_255 = (sa * 255) + (da * inv_sa); 
 
-            uint8_t out_r = (sr * sa + dr * inv_sa) / 255;
-            uint8_t out_g = (sg * sa + dg * inv_sa) / 255;
-            uint8_t out_b = (sb * sa + db * inv_sa) / 255;
-            uint8_t out_a = sa + (da * inv_sa) / 255;
+            if (out_a_255 == 0) {
+                d_px[i] = 0;
+                continue;
+            }
 
-            d_px[i] = makeColor(out_r,out_g,out_b,out_a);
+            uint8_t out_r = (sr * sa * 255 + dr * da * inv_sa) / out_a_255;
+            uint8_t out_g = (sg * sa * 255 + dg * da * inv_sa) / out_a_255;
+            uint8_t out_b = (sb * sa * 255 + db * da * inv_sa) / out_a_255;
+            uint8_t out_a = out_a_255 / 255;
+
+            d_px[i] = makeColor(out_r, out_g, out_b, out_a);
         }
     }
 

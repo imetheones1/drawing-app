@@ -44,6 +44,11 @@ typedef struct AppState {
     Clay_SDL3RendererData rendererData;
 
     bool should_redraw;
+
+    float cur_r;
+    float cur_g;
+    float cur_b;
+    float  cur_opacity;
 } AppState;
 
 extern bool everything_ok;

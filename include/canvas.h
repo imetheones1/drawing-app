@@ -83,8 +83,14 @@ void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool ove
 // convert from screen space to canvas space
 void screenToCanvas(AppState *state ,double screen_x, double screen_y, double* out_canvas_x, double* out_canvas_y);
 
+// convert a value to uint8 then to uint32
+#define cT8T32(v) (uint32_t)((uint8_t)(v))
+
 // generate a color from 4 uint8_t
-#define makeColor(r,g,b,a) ((uint32_t)( ( (uint32_t)(r) << 24 ) | ( (uint32_t)(g) << 16 ) | ( (uint32_t)(b) << 8 ) | (uint32_t)(a) ))
+#define makeColor(r,g,b,a) ((uint32_t)( ( cT8T32(r) << 24 ) | ( cT8T32(g) << 16 ) | ( cT8T32(b) << 8 ) | cT8T32(a) ))
+
+// convert HSV to RGB
+uint32_t HSVtoRGB(float h, float s, float v);
 
 // fill a layer completely with a solid color
 void fillLayer(Layer *layer, uint32_t color);

@@ -23,6 +23,39 @@ typedef struct ButtonContext {
     AppState *state;
 } ButtonContext;
 
+typedef struct SliderState {
+    SDL_Texture *background;
+    float min_val;
+    float max_val;
+    float *cur_val;
+    AppState *state;
+} SliderState;
+
+void HandleSliderInteraction(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData) {
+    SliderState *slider = (SliderState*)userData;
+    
+    Clay_ElementData elData = Clay_GetElementData(elementId);
+    if (!elData.found) return;
+
+    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME || 
+        pointerInfo.state == CLAY_POINTER_DATA_PRESSED) {
+        
+        float relative_x = pointerInfo.position.x - elData.boundingBox.x;
+        float percentage = relative_x / elData.boundingBox.width;
+        
+        if (percentage < 0.0f) percentage = 0.0f;
+        if (percentage > 1.0f) percentage = 1.0f;
+        
+        *(slider->cur_val) = slider->min_val + percentage * (slider->max_val - slider->min_val);
+        
+        if (slider->state) {
+            slider->state->should_redraw = true;
+        }
+
+        // SDL_Log("New Value: %f",*(slider->cur_val));
+    }
+}
+
 static inline Clay_Dimensions SDL_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData) {
     TTF_Font **fonts = userData;
     TTF_Font *font = fonts[config->fontId];
@@ -143,6 +176,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     SDL_GetCurrentRenderOutputSize(state->renderer, &state->screen_width, &state->screen_height);
     Clay_SetLayoutDimensions((Clay_Dimensions) { (float)state->screen_width, (float)state->screen_height });
 
+    state->cur_opacity = 255;
+    state->cur_r = 0;
+    state->cur_g = 0;
+    state->cur_b = 0;
+
     state->should_redraw = true;
 
     *appstate = state;
@@ -198,6 +236,106 @@ void CLAY_TEXTBOX(TextboxState* tb, Clay_ElementId id) {
             .isStaticallyAllocated = false
         };
         CLAY_TEXT(text_str, &textbox_text_config);
+    }
+}
+
+static SliderState alpha_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState red_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState green_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+static SliderState blue_slider_state = {
+    .background = NULL,
+    .min_val = 0,
+    .max_val = 255
+};
+
+void CLAY_SLIDER(SliderState* slider, Clay_ElementId id) {
+    float percentage = 0.0f;
+    if (slider->max_val > slider->min_val) {
+        percentage = (*(slider->cur_val) - slider->min_val) / (slider->max_val - slider->min_val);
+    }
+    if (percentage < 0.0f) percentage = 0.0f;
+    if (percentage > 1.0f) percentage = 1.0f;
+
+    Clay_ElementData parentData = Clay_GetElementData(id);
+    float parentWidth = parentData.found ? parentData.boundingBox.width : 0;
+
+    CLAY((Clay_ElementDeclaration){
+        .id = id,
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_GROW(),
+                .height = CLAY_SIZING_FIXED(30)
+            },
+            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+        }
+    }) {
+        Clay_OnHover(&HandleSliderInteraction, (intptr_t)slider);
+        
+        CLAY((Clay_ElementDeclaration){
+            .layout = {
+                .sizing = {
+                    .width = CLAY_SIZING_GROW(),
+                    .height = CLAY_SIZING_FIXED(20)
+                }
+            },
+            .image = {
+                .imageData = slider->background
+            },
+            .backgroundColor = slider->background ? (Clay_Color){0,0,0,0} : (Clay_Color){60, 60, 65, 255},
+            .cornerRadius = { 4, 4, 4, 4 }
+        }) {}
+
+        CLAY((Clay_ElementDeclaration){
+            .floating = {
+                .attachTo = CLAY_ATTACH_TO_PARENT,
+                .attachPoints = {
+                    .element = CLAY_ATTACH_POINT_CENTER_TOP,
+                    .parent = CLAY_ATTACH_POINT_LEFT_TOP
+                },
+                .offset = { parentWidth * percentage, 0 },
+                .zIndex = CLAY_PANEL_Z_INDEX + 1
+            },
+            .layout = {
+                .sizing = {
+                    .width = CLAY_SIZING_FIXED(3),
+                    .height = CLAY_SIZING_FIXED(20) 
+                }
+            },
+            .backgroundColor = {255, 255, 255, 255}, 
+            .cornerRadius = { 1, 1, 1, 1 }
+        }) {}
+
+        CLAY((Clay_ElementDeclaration){
+            .floating = {
+                .attachTo = CLAY_ATTACH_TO_PARENT,
+                .attachPoints = {
+                    .element = CLAY_ATTACH_POINT_CENTER_TOP,
+                    .parent = CLAY_ATTACH_POINT_LEFT_TOP
+                },
+                .offset = { parentWidth * percentage, 20 },
+                .zIndex = CLAY_PANEL_Z_INDEX + 1
+            },
+            .layout = {
+                .sizing = {
+                    .width = CLAY_SIZING_FIXED(8),
+                    .height = CLAY_SIZING_FIXED(10)
+                }
+            },
+            .backgroundColor = {200, 200, 210, 255},
+            .cornerRadius = { 1, 1, 4, 4 }
+        }) {}
     }
 }
 
@@ -467,7 +605,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     switch (state->layers->current_tool) {
         case TOOL_PEN:
         case TOOL_ERASER: {
-            state->layers->current_color = makeColor(0, 0, 0, 255);
+            state->layers->current_color = makeColor(state->cur_r, state->cur_g, state->cur_b, state->cur_opacity);
             state->layers->current_tool_radius = SDL_max(0.5, SDL_atof(tool_radius_textbox.text));
             state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
             break;
@@ -712,6 +850,56 @@ SDL_AppResult SDL_AppIterate(void *appstate){
 
         CLAY_TEXT(CLAY_STRING("Spacing:"), &tool_button_text_config); 
         CLAY_TEXTBOX(&tool_spacing_textbox, CLAY_ID("SpacingTextbox"));
+    }
+
+    CLAY((Clay_ElementDeclaration){
+        .id = CLAY_ID("ColorPanel"),
+        .floating = {
+            .attachTo = CLAY_ATTACH_TO_ROOT,
+            .attachPoints = {
+                .element = CLAY_ATTACH_POINT_LEFT_BOTTOM,
+                .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM
+            },
+            .offset = {10, -10},
+            .zIndex = CLAY_PANEL_Z_INDEX,
+        },
+        .layout = {
+            .sizing = {
+                .width = CLAY_SIZING_FIXED(200),
+                // .height = CLAY_SIZING_FIXED(100),
+            },
+            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+            .padding = {10, 10, 10, 10},
+            .childGap = 10
+        },
+        .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
+    }) {
+        #define COLOR_PICKER_NUMERICAL(ID,SLIDER_STATE,CUR_VAL_POINTER,TEXT) \
+            SLIDER_STATE.state = state;\
+            SLIDER_STATE.cur_val = CUR_VAL_POINTER;\
+            CLAY((Clay_ElementDeclaration){ \
+                .id = CLAY_ID(ID "_container"),\
+                .layout = {\
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT,\
+                    .childAlignment = {\
+                        .y=CLAY_ALIGN_Y_CENTER\
+                    },\
+                    .sizing = { \
+                        .width = CLAY_SIZING_GROW() \
+                    },\
+                    .childGap = 10\
+                }\
+            }) {\
+                CLAY((Clay_ElementDeclaration){.id = CLAY_ID(ID "_container_text_container"),.layout={.sizing={.width=CLAY_SIZING_FIXED(50)}}}) {\
+                    CLAY_TEXT(CLAY_STRING(TEXT), &tool_button_text_config);\
+                };\
+                CLAY_SLIDER(&SLIDER_STATE,CLAY_ID(ID "_slider"));\
+            }
+        COLOR_PICKER_NUMERICAL("red",red_slider_state,&state->cur_r,"R");
+        COLOR_PICKER_NUMERICAL("green",green_slider_state,&state->cur_g,"G");
+        COLOR_PICKER_NUMERICAL("blue",blue_slider_state,&state->cur_b,"B");
+        COLOR_PICKER_NUMERICAL("alpha",alpha_slider_state,&state->cur_opacity,"Alpha");
+        #undef COLOR_PICKER_NUMERICAL
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
