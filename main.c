@@ -275,6 +275,8 @@ typedef struct TextboxState {
     size_t length;
     bool is_focused;
     Clay_ElementId id;
+    float *linked_val;
+    bool is_color;
 } TextboxState;
 
 static TextboxState* active_textboxes[MAX_ACTIVE_TEXTBOXES];
@@ -437,6 +439,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                             state->should_redraw = true;
                         } else if (tb->is_focused) {
                             tb->is_focused = false;
+                            
+                            if (tb->linked_val) {
+                                float val = SDL_atof(tb->text);
+                                if (tb->is_color) val = SDL_clamp(val, 0.0f, 255.0f);
+                                *(tb->linked_val) = val;
+                                tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%.0f", val);
+                            }
+                            
                             state->should_redraw = true;
                         }
                     }
@@ -615,6 +625,25 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                         break;
                     }
                 }
+            } 
+            else if (event->key.key == SDLK_RETURN || event->key.key == SDLK_KP_ENTER) {
+                for (size_t i = 0; i < active_textboxes_count; i++) {
+                    TextboxState* tb = active_textboxes[i];
+                    if (tb->is_focused) {
+                        tb->is_focused = false;
+                        SDL_StopTextInput(state->window);
+                        
+                        if (tb->linked_val) {
+                            float val = SDL_atof(tb->text);
+                            if (tb->is_color) val = SDL_clamp(val, 0.0f, 255.0f);
+                            *(tb->linked_val) = val;
+                            tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%.0f", val);
+                        }
+                        
+                        state->should_redraw = true;
+                        break;
+                    }
+                }
             }
             break;
         }
@@ -657,6 +686,11 @@ static TextboxState tool_spacing_textbox = {
     .length = 3, 
     .is_focused = false 
 };
+
+static TextboxState red_textbox_state = {0};
+static TextboxState green_textbox_state = {0};
+static TextboxState blue_textbox_state = {0};
+static TextboxState alpha_textbox_state = {0};
 
 SDL_AppResult SDL_AppIterate(void *appstate){
     AppState* state = (AppState*)appstate;
@@ -937,31 +971,38 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         },
         .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
     }) {
-        #define COLOR_PICKER_NUMERICAL(ID,SLIDER_STATE,CUR_VAL_POINTER,TEXT) \
-            SLIDER_STATE.state = state;\
-            SLIDER_STATE.cur_val = CUR_VAL_POINTER;\
+        #define COLOR_PICKER_NUMERICAL(ID, SLIDER_STATE, TEXTBOX_STATE, CUR_VAL_POINTER, TEXT) \
+            SLIDER_STATE.state = state; \
+            SLIDER_STATE.cur_val = CUR_VAL_POINTER; \
+            TEXTBOX_STATE.linked_val = CUR_VAL_POINTER; \
+            TEXTBOX_STATE.is_color = true; \
+            if (!TEXTBOX_STATE.is_focused) { \
+                TEXTBOX_STATE.length = SDL_snprintf(TEXTBOX_STATE.text, MAX_TEXTBOX_LEN, "%.0f", *(CUR_VAL_POINTER)); \
+            } \
             CLAY((Clay_ElementDeclaration){ \
-                .id = CLAY_ID(ID "_container"),\
-                .layout = {\
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT,\
-                    .childAlignment = {\
-                        .y=CLAY_ALIGN_Y_CENTER\
-                    },\
+                .id = CLAY_ID(ID "_container"), \
+                .layout = { \
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT, \
+                    .childAlignment = { \
+                        .y=CLAY_ALIGN_Y_CENTER \
+                    }, \
                     .sizing = { \
                         .width = CLAY_SIZING_GROW() \
-                    },\
-                    .childGap = 10\
-                }\
-            }) {\
-                CLAY((Clay_ElementDeclaration){.id = CLAY_ID(ID "_container_text_container"),.layout={.sizing={.width=CLAY_SIZING_FIXED(50)}}}) {\
-                    CLAY_TEXT(CLAY_STRING(TEXT), &tool_button_text_config);\
-                };\
-                CLAY_SLIDER(&SLIDER_STATE,CLAY_ID(ID "_slider"));\
+                    }, \
+                    .childGap = 10 \
+                } \
+            }) { \
+                CLAY((Clay_ElementDeclaration){.id = CLAY_ID(ID "_container_text_container"),.layout={.sizing={.width=CLAY_SIZING_FIXED(50)}}}) { \
+                    CLAY_TEXT(CLAY_STRING(TEXT), &tool_button_text_config); \
+                }; \
+                CLAY_TEXTBOX(&TEXTBOX_STATE, CLAY_ID(ID "_textbox")); \
+                CLAY_SLIDER(&SLIDER_STATE, CLAY_ID(ID "_slider")); \
             }
-        COLOR_PICKER_NUMERICAL("red",red_slider_state,&state->cur_r,"R");
-        COLOR_PICKER_NUMERICAL("green",green_slider_state,&state->cur_g,"G");
-        COLOR_PICKER_NUMERICAL("blue",blue_slider_state,&state->cur_b,"B");
-        COLOR_PICKER_NUMERICAL("alpha",alpha_slider_state,&state->cur_opacity,"Alpha");
+
+        COLOR_PICKER_NUMERICAL("red", red_slider_state, red_textbox_state, &state->cur_r, "R");
+        COLOR_PICKER_NUMERICAL("green", green_slider_state, green_textbox_state, &state->cur_g, "G");
+        COLOR_PICKER_NUMERICAL("blue", blue_slider_state, blue_textbox_state, &state->cur_b, "B");
+        COLOR_PICKER_NUMERICAL("alpha", alpha_slider_state, alpha_textbox_state, &state->cur_opacity, "Alpha");
         #undef COLOR_PICKER_NUMERICAL
 
         if (!SDL_SetTextureColorMod(red_slider_state.background,255,state->cur_g,state->cur_b)) {
