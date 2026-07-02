@@ -6,6 +6,10 @@
 #include "include/canvas.h"
 #include <SDL3_ttf/SDL_ttf.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #define CLAY_IMPLEMENTATION
 #include "Clay/clay.h"
 
@@ -185,7 +189,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
     addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    state->layers->cur_layer = state->layers->layer_count-1;
+    // state->layers->cur_layer = state->layers->layer_count-1;
+    state->layers->cur_layer = 3;
 
     state->cur_lines = SDL_malloc(sizeof(Lines));
     returnIfNull(state->cur_lines,"Memory allocation error","Failed to allocate memory for lines buffer: %s",SDL_GetError());
@@ -276,7 +281,10 @@ typedef struct TextboxState {
     bool is_focused;
     Clay_ElementId id;
     float *linked_val;
-    bool is_color;
+    bool has_min;
+    bool has_max;
+    float min_val;
+    float max_val;
 } TextboxState;
 
 static TextboxState* active_textboxes[MAX_ACTIVE_TEXTBOXES];
@@ -433,17 +441,36 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                         Clay_ElementData elData = Clay_GetElementData(tb->id);
                         
                         if (elData.found && isInsideRectangle(event->button.x,event->button.y,elData.boundingBox.x,elData.boundingBox.y,elData.boundingBox.width,elData.boundingBox.height)) {
-                            tb->is_focused = true;
                             clicked_textbox = true;
-                            
-                            SDL_Rect input_area = {
-                                .x = elData.boundingBox.x,
-                                .y = elData.boundingBox.y,
-                                .w = elData.boundingBox.width,
-                                .h = elData.boundingBox.height
-                            };
 
-                            SDL_SetTextInputArea(state->window, &input_area, 0); 
+                            #ifdef __EMSCRIPTEN__
+                            int is_mobile = emscripten_run_script_int("/Mobi|Android/i.test(navigator.userAgent)");
+                            if (is_mobile) {
+                                char js_code[512];
+                                SDL_snprintf(js_code, sizeof(js_code), 
+                                    "(function() { var res = prompt('Enter value:', '%s'); return res === null ? '__CANCEL__' : res; })()", 
+                                    tb->text);
+                                
+                                char* input_text = emscripten_run_script_string(js_code);
+                                
+                                if (input_text && SDL_strcmp(input_text, "__CANCEL__") != 0) {
+                                    SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%s", input_text);
+                                    tb->length = SDL_strnlen(tb->text, MAX_TEXTBOX_LEN);
+                                    
+                                    if (tb->linked_val) {
+                                        float val = SDL_atof(tb->text);
+                                        if (tb->has_min&&val<tb->min_val) val = tb->min_val;
+                                        if (tb->has_max&&val>tb->max_val) val = tb->max_val;
+                                        *(tb->linked_val) = val;
+                                        tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%g", val);
+                                    }
+                                }
+                                state->should_redraw = true;
+                                continue;
+                            }
+                            #endif
+
+                            tb->is_focused = true;
                             SDL_StartTextInput(state->window);
                             
                             state->should_redraw = true;
@@ -452,9 +479,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                             
                             if (tb->linked_val) {
                                 float val = SDL_atof(tb->text);
-                                if (tb->is_color) val = SDL_clamp(val, 0.0f, 255.0f);
+                                if (tb->has_min&&val<tb->min_val) val = tb->min_val;
+                                if (tb->has_max&&val>tb->max_val) val = tb->max_val;
                                 *(tb->linked_val) = val;
-                                tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%.0f", val);
+                                tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%g", val);
                             }
                             
                             state->should_redraw = true;
@@ -645,9 +673,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                         
                         if (tb->linked_val) {
                             float val = SDL_atof(tb->text);
-                            if (tb->is_color) val = SDL_clamp(val, 0.0f, 255.0f);
+                            if (tb->has_min&&val<tb->min_val) val = tb->min_val;
+                            if (tb->has_max&&val>tb->max_val) val = tb->max_val;
                             *(tb->linked_val) = val;
-                            tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%.0f", val);
+                            tb->length = SDL_snprintf(tb->text, MAX_TEXTBOX_LEN, "%g", val);
                         }
                         
                         state->should_redraw = true;
@@ -682,19 +711,27 @@ static ButtonContext tool_button_context = {
 static TextboxState tool_radius_textbox = { 
     .text = "2", 
     .length = 1, 
-    .is_focused = false 
+    .is_focused = false,
+    .has_min = true,
+    .min_val = 0.5f
 };
 
 static TextboxState tool_softness_textbox = { 
     .text = "0.5", 
     .length = 3, 
-    .is_focused = false 
+    .is_focused = false,
+    .has_min = true,
+    .min_val = 0.0f,
+    .has_max = true,
+    .max_val = 1.0f
 };
 
 static TextboxState tool_spacing_textbox = { 
     .text = "0.5",
     .length = 3, 
-    .is_focused = false 
+    .is_focused = false,
+    .has_min = true,
+    .min_val = 0.01f
 };
 
 static TextboxState red_textbox_state = {0};
@@ -719,9 +756,9 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         }
     }
     
-    float current_spacing = SDL_max(0.01f, (float)SDL_atof(tool_spacing_textbox.text));
+    state->layers->current_tool_spacing = SDL_max(0.01f, (float)SDL_atof(tool_spacing_textbox.text));
     
-    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer), state->layers->current_color, state->layers->current_tool_radius, state->layers->current_tool_softness, current_spacing)) {
+    if (drawLinesToLayer(state->cur_lines, &(state->layers->edit_layer), state->layers->current_color, state->layers->current_tool_radius, state->layers->current_tool_softness, state->layers->current_tool_spacing)) {
         state->should_redraw = true;
     }
 
@@ -949,12 +986,16 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         },
         .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
     }) {
+
+        tool_radius_textbox.linked_val = &(state->layers->current_tool_radius);
         CLAY_TEXT(CLAY_STRING("Radius:"), &tool_button_text_config); 
         CLAY_TEXTBOX(&tool_radius_textbox, CLAY_ID("RadiusTextbox"));
 
+        tool_softness_textbox.linked_val = &(state->layers->current_tool_softness);
         CLAY_TEXT(CLAY_STRING("Softness:"), &tool_button_text_config); 
         CLAY_TEXTBOX(&tool_softness_textbox, CLAY_ID("SoftnessTextbox"));
 
+        tool_spacing_textbox.linked_val = &(state->layers->current_tool_spacing);
         CLAY_TEXT(CLAY_STRING("Spacing:"), &tool_button_text_config); 
         CLAY_TEXTBOX(&tool_spacing_textbox, CLAY_ID("SpacingTextbox"));
     }
@@ -985,7 +1026,10 @@ SDL_AppResult SDL_AppIterate(void *appstate){
             SLIDER_STATE.state = state; \
             SLIDER_STATE.cur_val = CUR_VAL_POINTER; \
             TEXTBOX_STATE.linked_val = CUR_VAL_POINTER; \
-            TEXTBOX_STATE.is_color = true; \
+            TEXTBOX_STATE.has_min = true; \
+            TEXTBOX_STATE.has_max = true; \
+            TEXTBOX_STATE.min_val = 0; \
+            TEXTBOX_STATE.max_val = 255; \
             if (!TEXTBOX_STATE.is_focused) { \
                 TEXTBOX_STATE.length = SDL_snprintf(TEXTBOX_STATE.text, MAX_TEXTBOX_LEN, "%.0f", *(CUR_VAL_POINTER)); \
             } \

@@ -56,6 +56,7 @@ typedef struct Layers {
     uint32_t current_color;
     float current_tool_radius;
     float current_tool_softness;
+    float current_tool_spacing;
 } Layers;
 
 /**
