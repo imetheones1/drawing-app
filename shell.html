@@ -21,19 +21,9 @@
             height: 100%;
             display: block;
         }
-        
-        #mobile-keyboard-helper {
-            position: absolute;
-            top: -100px;
-            left: -100px;
-            opacity: 0;
-            font-size: 16px; 
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <input type="text" id="mobile-keyboard-helper" autocomplete="off" autocapitalize="none" spellcheck="false">
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 
     <script type='text/javascript'>
@@ -43,32 +33,6 @@
                 return canvas;
             })()
         };
-
-        window.addEventListener('DOMContentLoaded', () => {
-            const helper = document.getElementById('mobile-keyboard-helper');
-            const canvas = document.getElementById('canvas');
-
-            helper.addEventListener('input', (e) => {
-                if (e.data) {
-                    const textEvent = new Event('textInput', { bubbles: true });
-                    textEvent.data = e.data;
-                    canvas.dispatchEvent(textEvent);
-                }
-                helper.value = '';
-            });
-
-            helper.addEventListener('keydown', (e) => {
-                if (e.key === 'Backspace' || e.key === 'Enter') {
-                    const keyEvent = new KeyboardEvent('keydown', {
-                        key: e.key,
-                        code: e.code,
-                        keyCode: e.keyCode,
-                        bubbles: true
-                    });
-                    canvas.dispatchEvent(keyEvent);
-                }
-            });
-        });
     </script>
     
     {{{ SCRIPT }}}
