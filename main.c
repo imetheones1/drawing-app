@@ -435,7 +435,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
                         if (elData.found && isInsideRectangle(event->button.x,event->button.y,elData.boundingBox.x,elData.boundingBox.y,elData.boundingBox.width,elData.boundingBox.height)) {
                             tb->is_focused = true;
                             clicked_textbox = true;
+                            
+                            SDL_Rect input_area = {
+                                .x = elData.boundingBox.x,
+                                .y = elData.boundingBox.y,
+                                .w = elData.boundingBox.width,
+                                .h = elData.boundingBox.height
+                            };
+
+                            SDL_SetTextInputArea(state->window, &input_area, 0); 
                             SDL_StartTextInput(state->window);
+                            
                             state->should_redraw = true;
                         } else if (tb->is_focused) {
                             tb->is_focused = false;
