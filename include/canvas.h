@@ -72,7 +72,10 @@ SDL_Texture* compositeLayers(SDL_Renderer* renderer, Layers* layers);
 Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb, size_t size));
 
 // append a new layer to a layers struct
-void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size));
+void addLayer(Layers* layers, size_t index, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size), void* (*memmove_func)(void *_Dst, const void *_Src, size_t _Size));
+
+// remove a layer from a layers struct
+void removeLayer(Layers* layers, size_t index, void (*free_func)(void* ptr), void* (*realloc_func)(void* mem, size_t size), void* (*memmove_func)(void *_Dst, const void *_Src, size_t _Size));
 
 // apply all information from src to dest
 void mergeLayers(Layer* restrict dest, const Layer* restrict src, const bool overwrite, const bool is_eraser);

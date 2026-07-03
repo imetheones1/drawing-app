@@ -187,11 +187,56 @@ Layer createLayer(size_t height, size_t width, void* (*calloc_func)(size_t nmemb
     };
 }
 
-void addLayer(Layers* layers, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size)) {
+void addLayer(Layers* layers, size_t index, void* (*realloc_func)(void* mem, size_t size), void* (*calloc_func)(size_t nmemb, size_t size), void* (*memmove_func)(void *_Dst, const void *_Src, size_t _Size)) {
+    size_t insert_index = index + 1;
+
+    if (insert_index > layers->layer_count) {
+        insert_index = layers->layer_count;
+    }
+
     layers->layer_count++;
     layers->layers = (Layer*)(realloc_func(layers->layers, layers->layer_count * sizeof(Layer)));
-    quitIfNull(layers->layers,"Layer allocation error","Failed to allocate layers buffer: %s",SDL_GetError()); // todo make get error function a parameter
-    layers->layers[layers->layer_count - 1] = createLayer(layers->height, layers->width, calloc_func);
+    
+    quitIfNull(layers->layers, "Layer allocation error", "Failed to allocate layers buffer: %s", SDL_GetError()); // todo make get error function a parameter
+
+    if (insert_index < layers->layer_count - 1) {
+        memmove_func(&layers->layers[insert_index + 1], &layers->layers[insert_index], (layers->layer_count - 1 - insert_index) * sizeof(Layer));
+    }
+
+    layers->layers[insert_index] = createLayer(layers->height, layers->width, calloc_func);
+    layers->static_layers_changed = true;
+    
+    layers->cur_layer = insert_index;
+}
+
+void removeLayer(Layers* layers, size_t index, void (*free_func)(void* ptr), void* (*realloc_func)(void* mem, size_t size), void* (*memmove_func)(void *_Dst, const void *_Src, size_t _Size)) {
+    if (layers->layer_count == 0 || index >= layers->layer_count) {
+        return; 
+    }
+
+    if (layers->layers[index].pixels != NULL) {
+        free_func(layers->layers[index].pixels);
+    }
+    
+    if (layers->layers[index].texture) {
+        SDL_DestroyTexture(layers->layers[index].texture);
+    }
+
+    if (index < layers->layer_count - 1) {
+        memmove_func(&layers->layers[index], &layers->layers[index + 1], (layers->layer_count - 1 - index) * sizeof(Layer));
+    }
+
+    layers->layer_count--;
+
+    if (layers->layer_count > 0) {
+        layers->layers = (Layer*)(realloc_func(layers->layers, layers->layer_count * sizeof(Layer)));
+    } else {
+        free_func(layers->layers);
+        layers->layers = NULL;
+    }
+
+    if (layers->cur_layer > layers->layer_count-1) layers->cur_layer = layers->layer_count-1;
+
     layers->static_layers_changed = true;
 }
 

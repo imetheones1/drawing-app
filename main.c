@@ -182,15 +182,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     state->layers->width = 1000;
     state->layers->height = 1000;
     state->layers->edit_layer = createLayer(state->layers->width, state->layers->height, &SDL_calloc);
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
+    addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
     fillLayer(&(state->layers->layers[0]),makeColor(255,255,255,255));
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    addLayer(state->layers,&SDL_realloc,&SDL_calloc);
-    // state->layers->cur_layer = state->layers->layer_count-1;
-    state->layers->cur_layer = 3;
+    addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+    // addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+    // addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+    // addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+    // addLayer(state->layers,state->layers->layer_count,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+    state->layers->cur_layer = state->layers->layer_count-1;
+    // state->layers->cur_layer = 3;
 
     state->cur_lines = SDL_malloc(sizeof(Lines));
     returnIfNull(state->cur_lines,"Memory allocation error","Failed to allocate memory for lines buffer: %s",SDL_GetError());
@@ -271,6 +271,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]){
     *appstate = state;
     return SDL_APP_CONTINUE;
 }
+
+#define MAX_BUTTON_TEXT_LEN 10
+typedef struct ButtonState {
+    char text[MAX_BUTTON_TEXT_LEN];
+    bool show_text;
+    SDL_Texture* texture;
+    Clay_Color color;
+    void (*hoverHandler)(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData);
+    Clay_SizingAxis width;
+    Clay_SizingAxis height;
+    AppState* appstate;
+} ButtonState;
 
 #define MAX_TEXTBOX_LEN 256
 #define MAX_ACTIVE_TEXTBOXES 10
@@ -407,6 +419,73 @@ void CLAY_SLIDER(SliderState* slider, Clay_ElementId id) {
         }) {}
     }
 }
+
+void CLAY_BUTTON(ButtonState* state, Clay_ElementId id, AppState* appstate) {
+    state->appstate = appstate;
+    CLAY((Clay_ElementDeclaration){
+        .id = id,
+        .layout = {
+            .sizing = {
+                .width = state->width,
+                .height = state->height
+            },
+            .childAlignment = {
+                .x = CLAY_ALIGN_X_CENTER,
+                .y = CLAY_ALIGN_Y_CENTER
+            }
+        },
+        .image = {
+            .imageData = state->texture
+        },
+        .backgroundColor = state->color
+    }) {
+        Clay_OnHover(state->hoverHandler,(intptr_t)state);
+        if (state->show_text) {
+            Clay_String string = {
+                .chars = state->text,
+                .length = SDL_strnlen(state->text,MAX_BUTTON_TEXT_LEN),
+                .isStaticallyAllocated = false
+            };
+            CLAY_TEXT(string,&textbox_text_config);
+        }
+    }
+}
+
+void handleLayerAdd(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData){
+    ButtonState* state = (ButtonState*)userData;
+    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+        SDL_Log("layer add");
+        addLayer(state->appstate->layers,state->appstate->layers->cur_layer,&SDL_realloc,&SDL_calloc,&SDL_memmove);
+        state->appstate->should_redraw = true;
+    }
+}
+
+void handleLayerRemove(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData){
+    ButtonState* state = (ButtonState*)userData;
+    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+        SDL_Log("layer remove");
+        removeLayer(state->appstate->layers,state->appstate->layers->cur_layer,&SDL_free,&SDL_realloc,&SDL_memmove);
+        state->appstate->should_redraw = true;
+    }
+}
+
+static ButtonState add_layer_button_state = {
+    .text = "+",
+    .show_text = true,
+    .color = {.r = 0, .g = 255, .b = 0, .a = 255},
+    .width = CLAY_SIZING_FIXED(50),
+    .height = CLAY_SIZING_FIXED(50),
+    .hoverHandler = &handleLayerAdd
+};
+
+static ButtonState remove_layer_button_state = {
+    .text = "-",
+    .show_text = true,
+    .color = {.r = 255, .g = 0, .b = 0, .a = 255},
+    .width = CLAY_SIZING_FIXED(50),
+    .height = CLAY_SIZING_FIXED(50),
+    .hoverHandler = &handleLayerRemove
+};
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
     if (!everything_ok) return SDL_APP_FAILURE;
@@ -750,6 +829,10 @@ SDL_AppResult SDL_AppIterate(void *appstate){
             state->layers->current_tool_softness = SDL_clamp(SDL_atof(tool_softness_textbox.text), 0.0f, 1.0f);
             break;
         }
+        case TOOL_COUNT: {
+            SDL_Log("SOMEHOW IT IS USING THE NOT REAL TOOL");
+            break;
+        }
         default: {
             SDL_Log("UNHANDLED TOOL: %d",state->layers->current_tool);
             break;
@@ -843,6 +926,23 @@ SDL_AppResult SDL_AppIterate(void *appstate){
         },
         .backgroundColor = {.r=40, .g=40, .b=45, .a=240}
     }) {
+        CLAY((Clay_ElementDeclaration){
+            .id = CLAY_ID("LayerButtonArea"),
+            .layout = {
+                .sizing = {
+                    .width = CLAY_SIZING_GROW()
+                },
+                .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                .childAlignment = {
+                    .x = CLAY_ALIGN_X_CENTER,
+                    .y = CLAY_ALIGN_Y_CENTER
+                },
+                .childGap = 8
+            },
+        }) {
+            CLAY_BUTTON(&add_layer_button_state,CLAY_ID("AddLayerButton"),state);
+            CLAY_BUTTON(&remove_layer_button_state,CLAY_ID("RemoveLayerButton"),state);
+        }
         CLAY((Clay_ElementDeclaration){
             .id = CLAY_ID("LayerScrollArea"),
             .layout = {
