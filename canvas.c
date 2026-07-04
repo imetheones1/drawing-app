@@ -494,6 +494,13 @@ static void drawAliasedCapsule(Layer *layer, SDL_FPoint p1, SDL_FPoint p2, float
 
 static float last_radius = 2;
 
+static const int BAYER_4X4[4][4] = {
+        {  0,  8,  2, 10 },
+        { 12,  4, 14,  6 },
+        {  3, 11,  1,  9 },
+        { 15,  7, 13,  5 }
+    };
+
 static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStamp *stamp) {
     if (!stamp) {
         SDL_FPoint p = {cx, cy};
@@ -569,6 +576,16 @@ static void drawStamp(Layer *layer, float cx, float cy, uint32_t color, ToolStam
             if (stamp->softness <= EPSILON) {
                 stamp_alpha = (stamp_alpha > 50) ? 255 : 0;
                 if (!stamp_alpha) continue; 
+            } else {
+                float dither_val = BAYER_4X4[y % 4][x % 4];
+                
+                int dithered_alpha = (float)stamp_alpha + (dither_val - 8)*0.1; 
+                
+                if (dithered_alpha < 0) dithered_alpha = 0;
+                if (dithered_alpha > 255) dithered_alpha = 255;
+                
+                stamp_alpha = (uint32_t)dithered_alpha;
+                if (!stamp_alpha) continue;
             }
 
             int idx = y * layer->width + x;

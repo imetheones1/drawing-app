@@ -1053,6 +1053,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
                 switch (cur_tool) {
                     case TOOL_PEN: {cur_tool_clay_string=CLAY_STRING("Pen");break;}
                     case TOOL_ERASER: {cur_tool_clay_string=CLAY_STRING("Eraser");break;}
+                    default: {cur_tool_clay_string=CLAY_STRING("UNHANDLED!");break;}
                 }
 
                 CLAY_TEXT(cur_tool_clay_string,&tool_button_text_config);
