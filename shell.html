@@ -26,12 +26,20 @@
 <body>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 
+    <div id="error" style="display:none;">
+        <a style="color:red" href="javascript:window.location.reload()">An error occured. Please refresh the page.</a>
+    </div>
+
     <script type='text/javascript'>
         var Module = {
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
                 return canvas;
-            })()
+            })(),
+            onAbort: function(what) {
+                document.getElementById("canvas").remove();
+                document.getElementById("error").style.display = "block";
+            }
         };
     </script>
     

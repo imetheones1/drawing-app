@@ -4,6 +4,7 @@
 #define APPSTATE_H_
 #include <SDL3/SDL.h>
 #include "canvas.h"
+#include <stdlib.h>
 
 #include "../Clay/clay.h"
 #include "../Clay/clay_sdl_binding.h"
@@ -60,6 +61,7 @@ extern bool everything_ok;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, errorTitle, _msg, window_for_popups); \
         SDL_Quit(); \
         everything_ok = false; \
+        abort(); \
     }
 
 #define returnIfNull(value, errorTitle, errorFormat, formatValue) \
@@ -70,4 +72,4 @@ extern bool everything_ok;
         return SDL_APP_FAILURE; \
     }
 
-#endif
+#endif // APPSTATE_H_
